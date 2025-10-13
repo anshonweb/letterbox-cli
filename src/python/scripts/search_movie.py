@@ -9,10 +9,12 @@ def search_movie(query):
     
     movies = []
     for item in search_data.get('results', []): 
-        if 'name' in item and 'year' in item:
+        if 'name' in item and 'year' in item and 'slug' in item:
             movies.append({
                 "title": item['name'],
-                "year": item['year']
+                "year": item['year'],
+                "slug": item['slug'],
+                "director": item['directors'][0]['name'],
             })
 
     return movies
