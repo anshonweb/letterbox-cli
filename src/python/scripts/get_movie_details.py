@@ -1,40 +1,115 @@
 #!/usr/bin/env python3
 import sys
 import json
+import re
+import requests
+from bs4 import BeautifulSoup
+from urllib.parse import urlparse, parse_qs
 from letterboxdpy.movie import Movie
 
 
 def convert_stars_to_float(star_string):
-
+    """Convert star string (e.g. ★★★½) to numeric rating."""
     if not star_string:
         return 0.0
     rating = float(star_string.count('★'))
-
     if '½' in star_string:
         rating += 0.5
-        
     return rating
+
+
+def get_watch_providers(slug):
+    """Scrape TMDb’s ‘Where to Watch’ section via Letterboxd link."""
+    lb_url = f"https://letterboxd.com/film/{slug}/"
+    headers = {"User-Agent": "Mozilla/5.0"}
+
+    try:
+        res = requests.get(lb_url, headers=headers, timeout=10)
+        res.raise_for_status()
+    except requests.RequestException as e:
+        return []
+
+    # find TMDb ID from the Letterboxd HTML
+    match = re.search(r'https://www\.themoviedb\.org/movie/(\d+)', res.text)
+    if not match:
+        return []
+
+    tmdb_id = match.group(1)
+    tmdb_url = f"https://www.themoviedb.org/movie/{tmdb_id}/watch"
+
+    try:
+        res = requests.get(tmdb_url, headers=headers, timeout=10)
+        res.raise_for_status()
+    except requests.RequestException:
+        return []
+
+    soup = BeautifulSoup(res.text, "html.parser")
+    unique_providers = {}
+
+    name_corrections = {
+        "JioHotstar": "Disney+ Hotstar"
+    }
+
+    for a in soup.select(".ott_provider a"):
+        title = a.get("title")
+        link = a.get("href")
+        if not title or not link:
+            continue
+
+        action_type = "unknown"
+        if title.lower().startswith("watch "):
+            action_type = "stream"
+        elif title.lower().startswith("buy "):
+            action_type = "buy"
+        elif title.lower().startswith("rent "):
+            action_type = "rent"
+        name_match = re.search(r' on (.+)$', title)
+        if not name_match:
+            continue
+        provider_name = name_match.group(1).strip()
+        provider_name = name_corrections.get(provider_name, provider_name)
+        final_link = link
+        if "click.justwatch.com" in link:
+            parsed_url = urlparse(link)
+            query_params = parse_qs(parsed_url.query)
+            if 'r' in query_params:
+                final_link = query_params['r'][0]
+        if provider_name not in unique_providers or action_type == "stream":
+            unique_providers[provider_name] = {
+                "type": action_type,
+                "link": final_link
+            }
+    providers = [
+        {"name": name, "type": data["type"], "link": data["link"]}
+        for name, data in unique_providers.items()
+    ]
+
+    return providers
+
+
 def get_movie_details(slug):
+    """Fetch Letterboxd details and providers for a film."""
     movie_instance = Movie(slug)
-    
-    
+
     return {
         "title": movie_instance.title,
         "year": movie_instance.year,
-        "director": movie_instance.crew["director"][0]['name'],
-        "genres": [item['name'] for item in movie_instance.genres if item['type'] == 'genre'],
+        "director": movie_instance.crew.get("director", [{}])[0].get("name", "Unknown"),
+        "genres": [item['name'] for item in movie_instance.genres if item.get('type') == 'genre'],
         "rating": movie_instance.rating,
         "description": movie_instance.description,
         "url": movie_instance.url,
         "reviews": [
-    {
-        "author": review['user']['username'],
-        "text": review['review'],
-        "rating": convert_stars_to_float(review.get('rating'))
+            {
+                "author": review['user']['username'],
+                "text": review.get('review', '').strip(),
+                "rating": convert_stars_to_float(review.get('rating'))
+            }
+            for review in getattr(movie_instance, "popular_reviews", [])
+        ],
+        "providers": get_watch_providers(slug)
     }
-    for review in movie_instance.popular_reviews
-]
-    }
+
 
 if __name__ == "__main__":
     if len(sys.argv) < 2:
@@ -43,4 +118,4 @@ if __name__ == "__main__":
 
     slug = sys.argv[1]
     details = get_movie_details(slug)
-    print(json.dumps(details))
+    print(json.dumps(details, indent=4))

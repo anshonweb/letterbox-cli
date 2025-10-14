@@ -51,15 +51,22 @@ type Review struct {
 	Rating float64 `json:"rating"`
 }
 
+type Provider struct {
+	Name string `json:"name"`
+	Type string `json:"type"`
+	Link string `json:"link"`
+}
+
 type MovieDetails struct {
-	Title       string   `json:"title"`
-	Year        int      `json:"year"`
-	Director    string   `json:"director"`
-	Genres      []string `json:"genres"`
-	Rating      float64  `json:"rating"`
-	Description string   `json:"description"`
-	URL         string   `json:"url"`
-	Reviews     []Review `json:"reviews"`
+	Title       string     `json:"title"`
+	Year        int        `json:"year"`
+	Director    string     `json:"director"`
+	Genres      []string   `json:"genres"`
+	Rating      float64    `json:"rating"`
+	Description string     `json:"description"`
+	URL         string     `json:"url"`
+	Reviews     []Review   `json:"reviews"`
+	Providers   []Provider `json:"providers`
 }
 
 type searchResultMsg struct {
@@ -252,7 +259,7 @@ func (m SearchModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.tabContent = []string{
 			renderMovieInfo(msg.details),
 			renderMovieReviews(msg.details),
-			"No watch links available",
+			renderProviders(msg.details.Providers),
 		}
 		return m, nil
 
@@ -307,6 +314,22 @@ func renderMovieReviews(d MovieDetails) string {
 		lines = append(lines, fmt.Sprintf("• %s %s\n%s", coloredAuthor, coloredRating, r.Text))
 	}
 
+	return strings.Join(lines, "\n\n")
+}
+
+func renderProviders(p []Provider) string {
+	if len(p) == 0 {
+		return "No streaming or purchase options available."
+	}
+
+	var lines []string
+	for _, pr := range p {
+		line := fmt.Sprintf("• %s (%s)\n  %s",
+			lipgloss.NewStyle().Foreground(lipgloss.Color("#00FF7F")).Render(pr.Name),
+			pr.Type,
+			pr.Link)
+		lines = append(lines, line)
+	}
 	return strings.Join(lines, "\n\n")
 }
 
