@@ -9,7 +9,6 @@ from letterboxdpy.movie import Movie
 
 
 def convert_stars_to_float(star_string):
-    """Convert star string (e.g. ★★★½) to numeric rating."""
     if not star_string:
         return 0.0
     rating = float(star_string.count('★'))
@@ -19,7 +18,6 @@ def convert_stars_to_float(star_string):
 
 
 def get_watch_providers(slug):
-    """Scrape TMDb’s ‘Where to Watch’ section via Letterboxd link."""
     lb_url = f"https://letterboxd.com/film/{slug}/"
     headers = {"User-Agent": "Mozilla/5.0"}
 
@@ -29,7 +27,6 @@ def get_watch_providers(slug):
     except requests.RequestException as e:
         return []
 
-    # find TMDb ID from the Letterboxd HTML
     match = re.search(r'https://www\.themoviedb\.org/movie/(\d+)', res.text)
     if not match:
         return []
@@ -87,8 +84,14 @@ def get_watch_providers(slug):
     return providers
 
 
+def format_runtime(total_minutes):
+    if not total_minutes or not isinstance(total_minutes, int) or total_minutes <= 0:
+        return None
+    hours, minutes = divmod(total_minutes, 60)
+    return f"{hours}h {minutes}min"
+
+
 def get_movie_details(slug):
-    """Fetch Letterboxd details and providers for a film."""
     movie_instance = Movie(slug)
 
     return {
@@ -107,7 +110,10 @@ def get_movie_details(slug):
             }
             for review in getattr(movie_instance, "popular_reviews", [])
         ],
-        "providers": get_watch_providers(slug)
+        "providers": get_watch_providers(slug),
+        "runtime": format_runtime(movie_instance.runtime),
+        "cast" : [actor['name'] for actor in movie_instance.cast[:5]],
+        "released": movie_instance.details
     }
 
 

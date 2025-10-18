@@ -24,12 +24,18 @@ func (m RootModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if typed.Choice == "Search a movie" {
 			return RootModel{current: NewSearchModel()}, nil
 		}
+
+		if typed.Choice == "View a person's profile" {
+			return RootModel{current: NewUserModel()}, nil
+		}
 		return RootModel{current: typed}, cmd
 
 	case SearchModel:
 		return RootModel{current: typed}, cmd
-	}
 
+	case UserModel:
+		return RootModel{current: typed}, cmd
+	}
 	return m, cmd
 }
 
