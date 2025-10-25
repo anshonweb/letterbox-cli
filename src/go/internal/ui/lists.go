@@ -220,9 +220,16 @@ func (m ListsModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		rows := []table.Row{}
 		for _, movie := range m.listDetails {
+			var yearStr string
+			if movie.Year == 0 {
+				yearStr = "TBA"
+			} else {
+				yearStr = fmt.Sprintf("%d", movie.Year)
+			}
+
 			rows = append(rows, table.Row{
 				movie.Title,
-				fmt.Sprintf("%d", movie.Year),
+				yearStr,
 			})
 		}
 

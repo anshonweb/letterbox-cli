@@ -92,36 +92,57 @@ def format_runtime(total_minutes):
 
 
 def get_movie_details(slug):
-    movie_instance = Movie(slug)
+    try:
+        movie_instance = Movie(slug)
+        similar_list = []
+        similar_data = movie_instance.get_similar_movies()
+        if similar_data:
+            for data in similar_data.values():
+                similar_list.append({
+                    "name": data.get("name"),
+                    "rating": data.get("rating", 0.0)
+                })
 
-    return {
-        "title": movie_instance.title,
-        "year": movie_instance.year,
-        "director": movie_instance.crew.get("director", [{}])[0].get("name", "Unknown"),
-        "genres": [item['name'] for item in movie_instance.genres if item.get('type') == 'genre'],
-        "rating": movie_instance.rating,
-        "description": movie_instance.description,
-        "url": movie_instance.url,
-        "reviews": [
-            {
-                "author": review['user']['username'],
-                "text": review.get('review', '').strip(),
-                "rating": convert_stars_to_float(review.get('rating'))
-            }
-            for review in getattr(movie_instance, "popular_reviews", [])
-        ],
-        "providers": get_watch_providers(slug),
-        "runtime": format_runtime(movie_instance.runtime),
-        "cast" : [actor['name'] for actor in movie_instance.cast[:5]],
-        "released": movie_instance.details
-    }
+        return {
+            "title": movie_instance.title,
+            "year": movie_instance.year,
+            "director": movie_instance.crew.get("director", [{}])[0].get("name", "Unknown"),
+            "genres": [item['name'] for item in movie_instance.genres if item.get('type') == 'genre'],
+            "rating": movie_instance.rating,
+            "description": movie_instance.description,
+            "url": movie_instance.url,
+            "reviews": [
+                {
+                    "author": review['user']['username'],
+                    "text": review.get('review', '').strip(),
+                    "rating": convert_stars_to_float(review.get('rating'))
+                }
+                for review in getattr(movie_instance, "popular_reviews", [])[:5]
+            ],
+            "providers": get_watch_providers(slug),
+            "runtime": format_runtime(movie_instance.runtime),
+            "cast" : [actor['name'] for actor in movie_instance.cast[:5]],
+        
+            "release_date": movie_instance.details,
+            
+            "members": movie_instance.get_watchers_stats()['members'],
+            "fans":  movie_instance.get_watchers_stats()['fans'],
+            "likes":  movie_instance.get_watchers_stats()['likes'],
+            "review_count":  movie_instance.get_watchers_stats()['reviews'],
+            "lists":  movie_instance.get_watchers_stats()['lists'],
+            "tagline": movie_instance.get_tagline(),
+            "similar": similar_list
+        }
+    except Exception as e:
+        return {"error": str(e)}
 
 
 if __name__ == "__main__":
     if len(sys.argv) < 2:
-        print(json.dumps({}))
-        sys.exit(0)
+        print(json.dumps({"error": "No slug provided"}))
+        sys.exit(1)
 
     slug = sys.argv[1]
     details = get_movie_details(slug)
     print(json.dumps(details, indent=4))
+

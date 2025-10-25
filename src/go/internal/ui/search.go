@@ -6,6 +6,7 @@ import (
 	"os/exec"
 	"strings"
 
+	"github.com/charmbracelet/bubbles/paginator"
 	"github.com/charmbracelet/bubbles/spinner"
 	"github.com/charmbracelet/bubbles/table"
 	"github.com/charmbracelet/bubbles/textinput"
@@ -14,16 +15,111 @@ import (
 )
 
 var (
-	SearchUrlStyle = lipgloss.NewStyle().
+	navStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("242"))
+
+	navActiveStyle = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("#4FC3F7")).
-			Underline(true).
-			Padding(0, 1)
+			Underline(true)
 
 	SearchBorderBox = lipgloss.NewStyle().
 			Border(lipgloss.RoundedBorder()).
 			BorderForeground(lipgloss.Color("#555555")).
 			Padding(1, 2).
 			Margin(1, 2)
+)
+
+var (
+	movieTitleStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("#00A86B")).
+			Bold(true).
+			MarginBottom(1)
+
+	movieSubtitleStyle = lipgloss.NewStyle().
+				Foreground(lipgloss.Color("242"))
+
+	movieRatingStyle = lipgloss.NewStyle().
+				Foreground(lipgloss.Color("#FFD700")).
+				Bold(true)
+
+	movieDetailKeyStyle = lipgloss.NewStyle().
+				Foreground(lipgloss.Color("#4FC3F7")).
+				Bold(true).
+				Width(10)
+
+	movieDetailValueStyle = lipgloss.NewStyle().
+				Foreground(lipgloss.Color("229"))
+
+	movieTaglineStyle = lipgloss.NewStyle().
+				Italic(true).
+				Foreground(lipgloss.Color("245")).
+				Margin(0, 0, 1, 0)
+
+	movieSmallMetaStyle = lipgloss.NewStyle().
+				Foreground(lipgloss.Color("242")).
+				MarginBottom(1)
+
+	statContainerStyle = lipgloss.NewStyle().
+				Margin(1, 0)
+
+	movieStatNumberBlueStyle = lipgloss.NewStyle().
+					Bold(true).
+					Foreground(lipgloss.Color("#4FC3F7"))
+
+	movieStatNumberOrangeStyle = lipgloss.NewStyle().
+					Bold(true).
+					Foreground(lipgloss.Color("#FF9800"))
+
+	movieStatNumberGreenStyle = lipgloss.NewStyle().
+					Bold(true).
+					Foreground(lipgloss.Color("#00A86B"))
+
+	movieStatLabelStyle = lipgloss.NewStyle().
+				Foreground(lipgloss.Color("242"))
+
+	synopsisHeaderStyle = lipgloss.NewStyle().
+				Foreground(lipgloss.Color("#00A86B")).
+				Bold(true)
+
+	synopsisBodyStyle = lipgloss.NewStyle().
+				Foreground(lipgloss.Color("245")).
+				PaddingLeft(1)
+
+	synopsisLineStyle = lipgloss.NewStyle().
+				Border(lipgloss.NormalBorder(), false, false, false, true).
+				BorderForeground(lipgloss.Color("#00A86B")).
+				PaddingLeft(1)
+
+	movieReleaseDateStyle = lipgloss.NewStyle().
+				Foreground(lipgloss.Color("242")).
+				MarginTop(1)
+
+	movieAuthorStyle = lipgloss.NewStyle().
+				Foreground(lipgloss.Color("#00A86B")).
+				Bold(true)
+
+	similarMovieStyle = lipgloss.NewStyle().
+				Bold(true).
+				Foreground(lipgloss.Color("229"))
+
+	searchInputPromptStyle = lipgloss.NewStyle().
+				Foreground(lipgloss.Color("#4FC3F7"))
+
+	searchInputCursorStyle = lipgloss.NewStyle().
+				Foreground(lipgloss.Color("#00A86B"))
+
+	searchInputTextStyle = lipgloss.NewStyle().
+				Foreground(lipgloss.Color("#00A86B"))
+
+	searchPageTitleStyle = lipgloss.NewStyle().
+				Foreground(lipgloss.Color("#00A86B")).
+				Bold(true).
+				Margin(1, 0, 1, 0)
+
+	searchHelpStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("242"))
+
+	docStyle = lipgloss.NewStyle().Padding(0, 1)
 )
 
 type Movie struct {
@@ -44,18 +140,30 @@ type Provider struct {
 	Link string `json:"link"`
 }
 
+type SimilarMovie struct {
+	Name   string  `json:"name"`
+	Rating float64 `json:"rating"`
+}
+
 type MovieDetails struct {
-	Title       string     `json:"title"`
-	Year        int        `json:"year"`
-	Director    string     `json:"director"`
-	Genres      []string   `json:"genres"`
-	Rating      float64    `json:"rating"`
-	Description string     `json:"description"`
-	URL         string     `json:"url"`
-	Reviews     []Review   `json:"reviews"`
-	Runtime     string     `json:"runtime`
-	Providers   []Provider `json:"providers`
-	Cast        []string   `json:"cast"`
+	Title       string         `json:"title"`
+	Year        int            `json:"year"`
+	Director    string         `json:"director"`
+	Genres      []string       `json:"genres"`
+	Rating      float64        `json:"rating"`
+	Description string         `json:"description"`
+	URL         string         `json:"url"`
+	Reviews     []Review       `json:"reviews"`
+	Runtime     string         `json:"runtime"`
+	Providers   []Provider     `json:"providers"`
+	Cast        []string       `json:"cast"`
+	Tagline     string         `json:"tagline"`
+	Members     int            `json:"members"`
+	Fans        int            `json:"fans"`
+	Likes       int            `json:"likes"`
+	ReviewCount int            `json:"review_count"`
+	Lists       int            `json:"lists"`
+	Similar     []SimilarMovie `json:"similar"`
 }
 
 type searchResultMsg struct {
@@ -69,22 +177,23 @@ type detailsResultMsg struct {
 }
 
 type SearchModel struct {
-	input          textinput.Model
-	spinner        spinner.Model
-	showSpinner    bool
-	table          table.Model
-	showTable      bool
-	submitted      bool
-	quitting       bool
-	viewingDetails bool
-	loadingDetails bool
-	selectedMovie  Movie
-	movieDetails   MovieDetails
-	movies         []Movie
-	baseStyle      lipgloss.Style
-	tabs           []string
-	tabContent     []string
-	activeTab      int
+	input            textinput.Model
+	spinner          spinner.Model
+	similarPaginator paginator.Model
+	showSpinner      bool
+	table            table.Model
+	showTable        bool
+	submitted        bool
+	quitting         bool
+	viewingDetails   bool
+	loadingDetails   bool
+	selectedMovie    Movie
+	movieDetails     MovieDetails
+	movies           []Movie
+	baseStyle        lipgloss.Style
+	tabs             []string
+	activeTab        int
+	width            int
 }
 
 func NewSearchModel() SearchModel {
@@ -92,16 +201,28 @@ func NewSearchModel() SearchModel {
 	ti.Placeholder = "Enter movie name..."
 	ti.Focus()
 	ti.CharLimit = 64
-	ti.Width = 30
+	ti.Width = 40
+
+	ti.Prompt = "Query: "
+	ti.PromptStyle = searchInputPromptStyle
+	ti.Cursor.Style = searchInputCursorStyle
+	ti.TextStyle = searchInputTextStyle
 
 	sp := spinner.New()
 	sp.Spinner = spinner.Dot
-	sp.Style = lipgloss.NewStyle().Foreground(lipgloss.Color("#32CD32"))
+	sp.Style = lipgloss.NewStyle().Foreground(lipgloss.Color("#00A86B"))
+
+	p := paginator.New()
+	p.Type = paginator.Dots
+	p.PerPage = 5
+	p.ActiveDot = lipgloss.NewStyle().Foreground(lipgloss.Color("229")).Render("•")
+	p.InactiveDot = lipgloss.NewStyle().Foreground(lipgloss.Color("240")).Render("•")
 
 	return SearchModel{
-		input:     ti,
-		spinner:   sp,
-		baseStyle: lipgloss.NewStyle().BorderStyle(lipgloss.NormalBorder()).BorderForeground(lipgloss.Color("240")),
+		input:            ti,
+		spinner:          sp,
+		similarPaginator: p,
+		baseStyle:        lipgloss.NewStyle().BorderStyle(lipgloss.NormalBorder()).BorderForeground(lipgloss.Color("240")),
 	}
 }
 
@@ -141,9 +262,9 @@ func (m SearchModel) Init() tea.Cmd {
 
 func (m SearchModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmd tea.Cmd
+	var cmds []tea.Cmd
 
 	switch msg := msg.(type) {
-
 	case tea.KeyMsg:
 		switch msg.String() {
 		case "ctrl+c", "q":
@@ -162,15 +283,14 @@ func (m SearchModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.input.Focus()
 				return m, nil
 			} else {
-				m.quitting = true
-				return m, tea.Quit
+				return NewMenuModel(), nil
 			}
 
 		case "enter":
 			if !m.submitted {
 				m.submitted = true
 				m.showSpinner = true
-				return m, tea.Batch(m.spinner.Tick, func() tea.Msg {
+				cmds = append(cmds, m.spinner.Tick, func() tea.Msg {
 					movies, err := callPythonSearch(m.input.Value())
 					return searchResultMsg{movies, err}
 				})
@@ -180,22 +300,40 @@ func (m SearchModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.selectedMovie = m.movies[cursor]
 					m.loadingDetails = true
 					m.showSpinner = true
-					return m, tea.Batch(m.spinner.Tick, func() tea.Msg {
+					cmds = append(cmds, m.spinner.Tick, func() tea.Msg {
 						details, err := callPythonGetDetails(m.selectedMovie.Slug)
 						return detailsResultMsg{details, err}
 					})
 				}
 			}
 
-		case "left", "h", "p":
-			if m.viewingDetails {
-				m.activeTab = max(m.activeTab-1, 0)
+		case "left", "h":
+			if m.viewingDetails && m.activeTab != 2 {
+				m.activeTab--
+				if m.activeTab < 0 {
+					m.activeTab = len(m.tabs) - 1
+				}
 				return m, nil
 			}
 
-		case "right", "l", "n", "tab":
+		case "right", "l":
+			if m.viewingDetails && m.activeTab != 2 {
+				m.activeTab = (m.activeTab + 1) % len(m.tabs)
+				return m, nil
+			}
+
+		case "shift+tab":
 			if m.viewingDetails {
-				m.activeTab = min(m.activeTab+1, len(m.tabs)-1)
+				m.activeTab--
+				if m.activeTab < 0 {
+					m.activeTab = len(m.tabs) - 1
+				}
+				return m, nil
+			}
+
+		case "tab":
+			if m.viewingDetails {
+				m.activeTab = (m.activeTab + 1) % len(m.tabs)
 				return m, nil
 			}
 		}
@@ -226,12 +364,12 @@ func (m SearchModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			table.WithColumns(columns),
 			table.WithRows(rows),
 			table.WithFocused(true),
-			table.WithHeight(len(rows)+3),
+			table.WithHeight(min(len(rows)+1, 15)),
 		)
 
 		s := table.DefaultStyles()
 		s.Header = s.Header.BorderStyle(lipgloss.NormalBorder()).BorderForeground(lipgloss.Color("240")).BorderBottom(true)
-		s.Selected = s.Selected.Foreground(lipgloss.Color("229")).Background(lipgloss.Color("#36a1a9"))
+		s.Selected = s.Selected.Foreground(lipgloss.Color("229")).Background(lipgloss.Color("#00A86B"))
 		t.SetStyles(s)
 
 		m.table = t
@@ -243,16 +381,15 @@ func (m SearchModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.viewingDetails = true
 		m.movieDetails = msg.details
 
-		m.tabs = []string{"Information", "Reviews", "Where to Watch"}
+		m.tabs = []string{"Information", "Reviews", "Similar", "Where to Watch"}
 		m.activeTab = 0
-		m.tabContent = []string{
-			renderMovieInfo(msg.details),
-			renderMovieReviews(msg.details),
-			renderProviders(msg.details.Providers),
-		}
+
+		m.similarPaginator.SetTotalPages(len(m.movieDetails.Similar))
+		m.similarPaginator.Page = 0
 		return m, nil
 
 	case tea.WindowSizeMsg:
+		m.width = msg.Width
 		if m.showTable {
 			m.table.SetWidth(msg.Width - 4)
 		}
@@ -260,119 +397,155 @@ func (m SearchModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	if m.showSpinner {
 		m.spinner, cmd = m.spinner.Update(msg)
+		cmds = append(cmds, cmd)
 	} else if !m.showTable {
 		m.input, cmd = m.input.Update(msg)
+		cmds = append(cmds, cmd)
 	} else if !m.viewingDetails {
 		m.table, cmd = m.table.Update(msg)
+		cmds = append(cmds, cmd)
 	}
 
-	return m, cmd
+	if m.viewingDetails && m.activeTab == 2 {
+		m.similarPaginator, cmd = m.similarPaginator.Update(msg)
+		cmds = append(cmds, cmd)
+	}
+
+	return m, tea.Batch(cmds...)
 }
 
-var (
-	ttleStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("39")).
-			Bold(true).
-			MarginBottom(1)
+func formatLargeNumber(n int) string {
+	if n > 1_000_000 {
+		return fmt.Sprintf("%.1fM", float64(n)/1_000_000.0)
+	}
+	if n > 1_000 {
+		return fmt.Sprintf("%.1fK", float64(n)/1_000.0)
+	}
+	return fmt.Sprintf("%d", n)
+}
 
-	subtitleStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("242"))
-
-	ratingStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("#FFD700")).
-			Bold(true)
-
-	navStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("242"))
-
-	navActiveStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("39")).
-			Underline(true)
-
-	metadataLabelStyle = lipgloss.NewStyle().
-				Foreground(lipgloss.Color("242"))
-
-	sectionHeaderStyle = lipgloss.NewStyle().
-				Foreground(lipgloss.Color("39")).
-				Bold(true)
-
-	sectionContentStyle = lipgloss.NewStyle().
-				PaddingLeft(2)
-
-	docStyle    = lipgloss.NewStyle().Padding(1, 2)
-	authorStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("39")).Bold(true)
-
-	searchPageTitleStyle = lipgloss.NewStyle().
-				Foreground(lipgloss.Color("39")).
-				Bold(true).
-				Margin(1, 0, 1, 0)
-
-	searchQueryLabelStyle = lipgloss.NewStyle().
-				Foreground(lipgloss.Color("242"))
-
-	searchHelpStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("242"))
-)
-
-func renderMovieInfo(d MovieDetails) string {
+func (m SearchModel) renderMovieInfo() string {
+	d := m.movieDetails
 
 	hyperlink := fmt.Sprintf("\x1b]8;;%s\x07%s\x1b]8;;\x07", d.URL, d.Title)
-	title := ttleStyle.Render(hyperlink)
-	subtitle := subtitleStyle.Render(fmt.Sprintf("%d • Rating %s", d.Year, ratingStyle.Render(fmt.Sprintf("★ %.1f/5", d.Rating))))
-	header := lipgloss.JoinVertical(lipgloss.Left, title, subtitle)
+	title := movieTitleStyle.Render(hyperlink)
+	subtitle := movieSubtitleStyle.Render(fmt.Sprintf("%d • %s", d.Year, movieRatingStyle.Render(fmt.Sprintf("★ %.1f/5", d.Rating))))
+	tagline := movieTaglineStyle.Render(fmt.Sprintf(`"%s"`, d.Tagline))
+	header := lipgloss.JoinVertical(lipgloss.Left, title, subtitle, tagline)
 
-	released := fmt.Sprintf("%s %d", metadataLabelStyle.Render("released:"), d.Year)
-	runtime := fmt.Sprintf("%s %s", metadataLabelStyle.Render("runtime:"), d.Runtime)
-	genre := fmt.Sprintf("%s %s", metadataLabelStyle.Render("genre:"), strings.Join(d.Genres, ", "))
-	metadata := lipgloss.JoinHorizontal(lipgloss.Top, released, "    ", runtime, "    ", genre)
+	smallMeta := movieSmallMetaStyle.Render(
+		fmt.Sprintf("• %d   • %s   • %s", d.Year, d.Runtime, strings.Join(d.Genres, ", ")),
+	)
 
-	directorHeader := sectionHeaderStyle.Render("• director")
-	directorContent := sectionContentStyle.Render(d.Director)
-	directorBlock := lipgloss.JoinVertical(lipgloss.Left, directorHeader, directorContent)
+	statMembers := lipgloss.JoinVertical(lipgloss.Center,
+		movieStatNumberBlueStyle.Render(formatLargeNumber(d.Members)),
+		movieStatLabelStyle.Render("members"),
+	)
+	statFans := lipgloss.JoinVertical(lipgloss.Center,
+		movieStatNumberOrangeStyle.Render(formatLargeNumber(d.Fans)),
+		movieStatLabelStyle.Render("fans"),
+	)
+	statLikes := lipgloss.JoinVertical(lipgloss.Center,
+		movieStatNumberGreenStyle.Render(formatLargeNumber(d.Likes)),
+		movieStatLabelStyle.Render("likes"),
+	)
+	statReviews := lipgloss.JoinVertical(lipgloss.Center,
+		movieStatNumberBlueStyle.Render(formatLargeNumber(d.ReviewCount)),
+		movieStatLabelStyle.Render("reviews"),
+	)
+	statLists := lipgloss.JoinVertical(lipgloss.Center,
+		movieStatNumberOrangeStyle.Render(formatLargeNumber(d.Lists)),
+		movieStatLabelStyle.Render("lists"),
+	)
 
-	castHeader := sectionHeaderStyle.Render("• cast")
-	castContent := sectionContentStyle.Render(strings.Join(d.Cast, ", "))
-	castBlock := lipgloss.JoinVertical(lipgloss.Left, castHeader, castContent)
+	statsBlock := statContainerStyle.Render(
+		lipgloss.JoinHorizontal(lipgloss.Top,
+			statMembers,
+			"   ",
+			statFans,
+			"   ",
+			statLikes,
+			"   ",
+			statReviews,
+			"   ",
+			statLists,
+		),
+	)
 
-	synopsisHeader := sectionHeaderStyle.Render("• synopsis")
-	synopsisContent := sectionContentStyle.Render(d.Description)
-	synopsisBlock := lipgloss.JoinVertical(lipgloss.Left, synopsisHeader, synopsisContent)
+	directorLine := lipgloss.JoinHorizontal(lipgloss.Left,
+		movieDetailKeyStyle.Render("director"),
+		movieDetailValueStyle.Render(d.Director),
+	)
+	castLine := lipgloss.JoinHorizontal(lipgloss.Left,
+		movieDetailKeyStyle.Render("cast"),
+		movieDetailValueStyle.Render(strings.Join(d.Cast, ", ")),
+	)
+	detailsBlock := lipgloss.JoinVertical(lipgloss.Left, directorLine, castLine)
 
-	mainContent := lipgloss.JoinVertical(lipgloss.Left,
-		directorBlock,
-		"",
-		synopsisBlock,
-		"",
-		castBlock,
+	synopsisHeader := synopsisHeaderStyle.Render("synopsis")
+	synopsisBody := synopsisBodyStyle.Render(d.Description)
+	synopsisBlock := lipgloss.JoinVertical(lipgloss.Left,
+		synopsisHeader,
+		lipgloss.JoinHorizontal(lipgloss.Left,
+			synopsisLineStyle.Render(""),
+			synopsisBody,
+		),
 	)
 
 	finalRender := lipgloss.JoinVertical(lipgloss.Left,
 		header,
+		smallMeta,
+		statsBlock,
 		"",
-		metadata,
+		detailsBlock,
 		"",
-		mainContent,
+		synopsisBlock,
+		"",
 	)
 
 	return docStyle.Render(finalRender)
 }
 
-func renderMovieReviews(d MovieDetails) string {
+func (m SearchModel) renderMovieReviews() string {
+	d := m.movieDetails
 	if len(d.Reviews) == 0 {
 		return "No reviews available."
-
 	}
 	lines := []string{}
 	for _, r := range d.Reviews {
-		coloredAuthor := authorStyle.Render(r.Author)
-		coloredRating := ratingStyle.Render(fmt.Sprintf("★ %.1f/5", r.Rating))
+		coloredAuthor := movieAuthorStyle.Render(r.Author)
+		coloredRating := movieRatingStyle.Render(fmt.Sprintf("★ %.1f/5", r.Rating))
 		lines = append(lines, fmt.Sprintf("• %s %s\n%s", coloredAuthor, coloredRating, r.Text))
 	}
-
 	return strings.Join(lines, "\n\n")
 }
 
-func renderProviders(p []Provider) string {
+func (m SearchModel) renderSimilarTab() string {
+	if len(m.movieDetails.Similar) == 0 {
+		return "No similar movies found."
+	}
+
+	var similarBlocks []string
+	start, end := m.similarPaginator.GetSliceBounds(len(m.movieDetails.Similar))
+	paginatedSimilar := m.movieDetails.Similar[start:end]
+
+	for _, s := range paginatedSimilar {
+		movieHeader := similarMovieStyle.Render(s.Name)
+		rating := movieRatingStyle.Render(fmt.Sprintf("★ %.1f/5", s.Rating))
+		line := lipgloss.JoinHorizontal(lipgloss.Top, movieHeader, " ", rating)
+		similarBlocks = append(similarBlocks, line)
+	}
+
+	paginatorView := m.similarPaginator.View()
+	if len(similarBlocks) > 0 {
+		paginatorView = "\n\n" + paginatorView
+	}
+
+	return strings.Join(similarBlocks, "\n\n") + paginatorView
+}
+
+func (m SearchModel) renderProviders() string {
+	p := m.movieDetails.Providers
 	if len(p) == 0 {
 		return "No streaming or purchase options available."
 	}
@@ -410,10 +583,26 @@ func (m SearchModel) View() string {
 		}
 		tabsRow := strings.Join(renderedTabs, "  ")
 
-		content := m.tabContent[m.activeTab]
+		var content string
+		switch m.activeTab {
+		case 0:
+			content = m.renderMovieInfo()
+		case 1:
+			content = m.renderMovieReviews()
+		case 2:
+			content = m.renderSimilarTab()
+		case 3:
+			content = m.renderProviders()
+		}
 
 		full := fmt.Sprintf("%s\n\n%s", tabsRow, content)
-		return SearchBorderBox.Render(full) + "\n(Use Left/Right to switch tabs, ESC to go back)"
+
+		helpText := "\n(Use ←/→ to switch tabs, ESC to go back)"
+		if m.activeTab == 2 {
+			helpText = "\n(Use ←/→ to change page, Tab to switch tabs, ESC to go back)"
+		}
+
+		return SearchBorderBox.Render(full) + helpText
 	}
 
 	if m.showSpinner {
@@ -421,10 +610,8 @@ func (m SearchModel) View() string {
 	}
 
 	if !m.showTable {
-		title := searchPageTitleStyle.Render("search")
-		queryLabel := searchQueryLabelStyle.Render("query:")
+		title := searchPageTitleStyle.Render("Search Movies")
 		inputBlock := lipgloss.JoinVertical(lipgloss.Left,
-			queryLabel,
 			m.input.View(),
 			lipgloss.NewStyle().Foreground(lipgloss.Color("39")).Render(strings.Repeat("─", m.input.Width+len(m.input.Prompt))),
 		)
@@ -450,7 +637,7 @@ func min(a, b int) int {
 }
 
 func max(a, b int) int {
-	if a > b {
+	if a < b {
 		return a
 	}
 	return b
