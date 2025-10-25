@@ -7,19 +7,19 @@ def user_details(username):
         user_instance = User(username)
 
         movie_name = "N/A"
+        recent_movies = []
         try:
             diary = user_instance.get_diary_recent()
             if diary and diary.get('months'):
                 months_dict = diary['months']
-                if months_dict:
-                    recent_month_num = max(months_dict.keys())
-                    days_dict = months_dict[recent_month_num]
-                    if days_dict:
-                        recent_day_key = max(days_dict.keys(), key=int)
-                        recent_movies_list = days_dict[recent_day_key]
-                        if recent_movies_list:
-                            recent_movie = recent_movies_list[0]
-                            movie_name = recent_movie.get('name', "N/A")
+                for month_key in sorted(months_dict.keys(), reverse=True):
+                    days_dict = months_dict[month_key]
+                    for day_key in sorted(days_dict.keys(), key=int, reverse=True):
+                        for movie in days_dict[day_key]:
+                            if 'name' in movie:
+                                recent_movies.append(movie['name'])
+                if recent_movies:
+                    movie_name = recent_movies[0]
         except Exception:
             pass
 
@@ -35,6 +35,7 @@ def user_details(username):
         except Exception:
             pass
             
+
         films_watched_count = 0
         try:
             films_data = user_instance.get_films()
@@ -45,24 +46,17 @@ def user_details(username):
 
         reviews_list = []
         try:
-            user_reviews_data = user_instance.get_reviews()
-            if user_reviews_data and 'reviews' in user_reviews_data:
-                for review_data in user_reviews_data['reviews'].values():
-                    review_date_obj = review_data.get('date', {})
-                    review_date_str = "0000-00-00"
-                    if review_date_obj:
-                        year = review_date_obj.get('year', 0)
-                        month = review_date_obj.get('month', 0)
-                        day = review_date_obj.get('day', 0)
-                        review_date_str = f"{year:04d}-{month:02d}-{day:02d}"
-
-                    reviews_list.append({
-                        "movie_name": review_data.get('movie', {}).get('name', 'Untitled'),
-                        "movie_year": review_data.get('movie', {}).get('release', 0),
-                        "rating": review_data.get('rating', 0),
-                        "review_text": review_data.get('review', {}).get('content', ''),
-                        "review_date": review_date_str,
-                    })
+            review_data = user_instance.get_reviews()
+            if review_data and 'reviews' in review_data:
+                for review in review_data['reviews'].values():
+                    if 'movie' in review and 'review' in review and 'date' in review:
+                        reviews_list.append({
+                            "movie_name": review['movie'].get('name', 'N/A'),
+                            "movie_year": review['movie'].get('release', 0),
+                            "rating": review.get('rating', 0),
+                            "review_text": review['review'].get('content', ''),
+                            "review_date": f"{review['date'].get('year', 0)}-{review['date'].get('month', 0):02d}-{review['date'].get('day', 0):02d}"
+                        })
         except Exception:
             pass
 
@@ -75,7 +69,12 @@ def user_details(username):
             "favorites": [movie_info.get('name', 'Untitled') for movie_info in user_instance.favorites.values()],
             "last_watched": movie_name,
             "reviews": reviews_list,
+            "recent": recent_movies,
+            "this_year": user_instance.get_stats()['this_year'],
+            "website": user_instance.website,
+            "location": user_instance.location,
         }
+    
     except Exception as e:
         return {"error": f"Failed to fetch user '{username}'. Exception: {e}"}
 

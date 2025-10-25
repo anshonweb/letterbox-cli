@@ -39,6 +39,10 @@ var (
 				Foreground(lipgloss.Color("#FFD700")).
 				PaddingLeft(2)
 
+	userRecentStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("#FFD700")).
+			PaddingLeft(2)
+
 	userSocialHeaderStyle = lipgloss.NewStyle().
 				Bold(true).
 				Underline(true).
@@ -47,12 +51,6 @@ var (
 
 	userSocialListStyle = lipgloss.NewStyle().
 				PaddingLeft(2)
-
-	userInputPromptStyle = lipgloss.NewStyle().
-				Foreground(lipgloss.Color("242"))
-
-	userInputStyle = lipgloss.NewStyle().
-			Margin(1, 2)
 
 	userReviewMovieStyle = lipgloss.NewStyle().
 				Bold(true).
@@ -66,6 +64,17 @@ var (
 	userReviewRatingStyle = lipgloss.NewStyle().
 				Bold(true).
 				Foreground(lipgloss.Color("#FFD700"))
+
+	userPageTitleStyle = lipgloss.NewStyle().
+				Foreground(lipgloss.Color("39")).
+				Bold(true).
+				Margin(1, 0, 1, 0)
+
+	userQueryLabelStyle = lipgloss.NewStyle().
+				Foreground(lipgloss.Color("242"))
+
+	userHelpStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("242"))
 )
 
 type UserReview struct {
@@ -85,6 +94,10 @@ type UserDetails struct {
 	Favorites    []string     `json:"favorites"`
 	LastWatched  string       `json:"last_watched"`
 	Reviews      []UserReview `json:"reviews"`
+	This_year    int          `json:"this_year"`
+	Recent       []string     `json:"recent"`
+	Website      string       `json:"website"`
+	Location     string       `json:"location"`
 }
 
 type userDetailsResultMsg struct {
@@ -113,7 +126,8 @@ func NewUserModel() UserModel {
 	ti.Placeholder = "Enter a Letterboxd username..."
 	ti.Focus()
 	ti.CharLimit = 32
-	ti.Width = 40
+	ti.Width = 30
+	ti.Prompt = ""
 
 	sp := spinner.New()
 	sp.Spinner = spinner.Dot
@@ -136,7 +150,7 @@ func NewUserModel() UserModel {
 		spinner:         sp,
 		paginator:       p,
 		socialPaginator: socialP,
-		tabs:            []string{"Profile", "Favorites", "Reviews", "Social"},
+		tabs:            []string{"Profile", "Favorites", "Recent", "Reviews", "Social"},
 	}
 }
 
@@ -199,13 +213,13 @@ func (m UserModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		case "right", "l":
 			if m.viewing {
-				if m.activeTab == 0 || m.activeTab == 1 {
+				if m.activeTab <= 2 { // Profile, Favorites, Recent
 					m.activeTab = (m.activeTab + 1) % len(m.tabs)
 				}
 			}
 		case "left", "h":
 			if m.viewing {
-				if m.activeTab == 0 || m.activeTab == 1 {
+				if m.activeTab <= 2 { // Profile, Favorites, Recent
 					m.activeTab--
 					if m.activeTab < 0 {
 						m.activeTab = len(m.tabs) - 1
@@ -249,10 +263,10 @@ func (m UserModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	if m.viewing {
 		switch m.activeTab {
-		case 2:
+		case 3: // Reviews
 			m.paginator, cmd = m.paginator.Update(msg)
 			cmds = append(cmds, cmd)
-		case 3:
+		case 4: // Social
 			m.socialPaginator, cmd = m.socialPaginator.Update(msg)
 			cmds = append(cmds, cmd)
 		}
@@ -291,33 +305,59 @@ func (m UserModel) View() string {
 		case 1:
 			content = m.renderFavoritesTab()
 		case 2:
-			content = m.renderReviewsTab()
+			content = m.renderRecentTab()
 		case 3:
+			content = m.renderReviewsTab()
+		case 4:
 			content = m.renderSocialTab()
 		}
 
 		helpText := "\n(Use Tab to switch tabs, ESC to go back)"
-		if m.activeTab == 0 || m.activeTab == 1 {
+		if m.activeTab <= 2 {
 			helpText = "\n(Use ←/→ or Tab to switch tabs, ESC to go back)"
-		} else if m.activeTab == 2 || m.activeTab == 3 {
+		} else {
 			helpText = "\n(Use ←/→ to change page, Tab to switch tabs, ESC to go back)"
 		}
 
 		return SearchBorderBox.Render(lipgloss.JoinVertical(lipgloss.Left, tabsRow, "", content)) + helpText
 	}
 
-	prompt := userInputPromptStyle.Render("Enter Letterboxd username:")
-	view := lipgloss.JoinVertical(lipgloss.Left, prompt, m.input.View())
-	return userInputStyle.Render(view)
+	// Updated input view
+	title := userPageTitleStyle.Render("user profile")
+	queryLabel := userQueryLabelStyle.Render("username:")
+	inputBlock := lipgloss.JoinVertical(lipgloss.Left,
+		queryLabel,
+		m.input.View(),
+		lipgloss.NewStyle().Foreground(lipgloss.Color("39")).Render(strings.Repeat("─", m.input.Width+1)),
+	)
+	help := userHelpStyle.Render("type a username and press enter")
+
+	final := lipgloss.JoinVertical(lipgloss.Left,
+		title,
+		inputBlock,
+		"\n\n\n",
+		help,
+	)
+	return lipgloss.NewStyle().Margin(1, 2).Render(final)
 }
 
 func (m UserModel) renderProfileTab() string {
 	header := userHeaderStyle.Render(fmt.Sprintf("@%s", m.userDetails.Username))
 	bio := userBioStyle.Render(m.userDetails.Bio)
+
 	stats := []string{
 		lipgloss.JoinHorizontal(lipgloss.Left, userLabelStyle.Render("Films Watched:"), userStatValueStyle.Render(fmt.Sprintf("%d", m.userDetails.FilmsWatched))),
 		lipgloss.JoinHorizontal(lipgloss.Left, userLabelStyle.Render("Last Watched:"), userStatValueStyle.Render(m.userDetails.LastWatched)),
+		lipgloss.JoinHorizontal(lipgloss.Left, userLabelStyle.Render("This Year: "), userStatValueStyle.Render(fmt.Sprintf("%d", m.userDetails.This_year))),
 	}
+
+	if m.userDetails.Website != "" {
+		stats = append(stats, lipgloss.JoinHorizontal(lipgloss.Left, userLabelStyle.Render("Website: "), userStatValueStyle.Render(m.userDetails.Website)))
+	}
+	if m.userDetails.Location != "" {
+		stats = append(stats, lipgloss.JoinHorizontal(lipgloss.Left, userLabelStyle.Render("Location: "), userStatValueStyle.Render(m.userDetails.Location)))
+	}
+
 	statsBlock := lipgloss.JoinVertical(lipgloss.Left, stats...)
 	return lipgloss.JoinVertical(lipgloss.Left, header, statsBlock, bio)
 }
@@ -331,6 +371,22 @@ func (m UserModel) renderFavoritesTab() string {
 		favs = append(favs, userFavoriteStyle.Render("♥︎ "+f))
 	}
 	return lipgloss.JoinVertical(lipgloss.Left, favs...)
+}
+
+func (m UserModel) renderRecentTab() string {
+	if len(m.userDetails.Recent) == 0 {
+		return "No recent activity found."
+	}
+
+	displayCount := min(5, len(m.userDetails.Recent))
+	recentToDisplay := m.userDetails.Recent[:displayCount]
+
+	var recentItems []string
+	for _, movie := range recentToDisplay {
+		recentItems = append(recentItems, userRecentStyle.Render("• "+movie))
+	}
+
+	return strings.Join(recentItems, "\n")
 }
 
 func (m UserModel) renderReviewsTab() string {
