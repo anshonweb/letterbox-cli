@@ -32,6 +32,10 @@ func (m RootModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if typed.Choice == "View Lists of Letterboxd" {
 			return RootModel{current: NewListsModel()}, nil
 		}
+
+		if typed.Choice == "Get Watchlist" {
+			return RootModel{current: NewWatchlistModel()}, nil
+		}
 		return RootModel{current: typed}, cmd
 
 	case SearchModel:
@@ -40,6 +44,9 @@ func (m RootModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case UserModel:
 		return RootModel{current: typed}, cmd
 	case ListsModel:
+		return RootModel{current: typed}, cmd
+
+	case WatchlistModel:
 		return RootModel{current: typed}, cmd
 	}
 
