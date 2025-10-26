@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 
@@ -103,26 +104,58 @@ func NewWatchlistModel() WatchlistModel {
 
 func callPythonGetWatchlist(username string) tea.Cmd {
 	return func() tea.Msg {
-		cmd := exec.Command("python3", "../../../python/scripts/get_watchlist.py", username)
+		pyExecName := "get_watchlist"
+		if runtime.GOOS == "windows" {
+			pyExecName += ".exe"
+		}
+
+		baseDir := ""
+		snapDir := os.Getenv("SNAP")
+		if snapDir != "" {
+			baseDir = snapDir
+		} else {
+			goExecPath, err := os.Executable()
+			if err != nil {
+				return watchlistResultMsg{err: fmt.Errorf("fatal: could not get executable path: %w", err)}
+			}
+			baseDir = filepath.Dir(goExecPath)
+		}
+
+		pyExecPath := filepath.Join(baseDir, "py_execs", pyExecName)
+
+		if _, err := os.Stat(pyExecPath); os.IsNotExist(err) {
+			wd, _ := os.Getwd()
+			arch := runtime.GOARCH
+			osDir := runtime.GOOS + "_" + arch
+			altPyExecPath := filepath.Join(wd, "..", "..", "dist_py", osDir, pyExecName)
+
+			if _, altErr := os.Stat(altPyExecPath); !os.IsNotExist(altErr) {
+				pyExecPath = altPyExecPath
+			} else {
+				return watchlistResultMsg{err: fmt.Errorf("python executable not found at %s or %s",
+					filepath.Join("$SNAP or ExecDir", "py_execs", pyExecName),
+					filepath.Join("project_root", "dist_py", osDir, pyExecName))}
+			}
+		}
+
+		cmd := exec.Command(pyExecPath, username)
 		out, err := cmd.Output()
+
 		if err != nil {
 			var errData map[string]string
 			if json.Unmarshal(out, &errData) == nil && errData["error"] != "" {
 				return watchlistResultMsg{err: fmt.Errorf(errData["error"])}
 			}
-			return watchlistResultMsg{err: fmt.Errorf("failed to run script: %w, output: %s", err, string(out))}
+			return watchlistResultMsg{err: fmt.Errorf("failed to run script '%s': %w, output: %s", pyExecPath, err, string(out))}
 		}
-
 		var maybeErr map[string]string
 		if json.Unmarshal(out, &maybeErr) == nil && maybeErr["error"] != "" {
 			return watchlistResultMsg{err: fmt.Errorf(maybeErr["error"])}
 		}
-
 		var movies []Movie
 		if err := json.Unmarshal(out, &movies); err != nil {
 			return watchlistResultMsg{err: fmt.Errorf("failed to parse watchlist JSON: %w", err)}
 		}
-
 		return watchlistResultMsg{movies: movies}
 	}
 }

@@ -36,6 +36,9 @@ func (m RootModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if typed.Choice == "Get Watchlist" {
 			return RootModel{current: NewWatchlistModel()}, nil
 		}
+		if typed.Choice == "Get diary of a person" {
+			return RootModel{current: NewDiaryModel()}, nil
+		}
 		return RootModel{current: typed}, cmd
 
 	case SearchModel:
@@ -47,6 +50,9 @@ func (m RootModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return RootModel{current: typed}, cmd
 
 	case WatchlistModel:
+		return RootModel{current: typed}, cmd
+
+	case DiaryModel:
 		return RootModel{current: typed}, cmd
 	}
 

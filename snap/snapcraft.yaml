@@ -1,0 +1,31 @@
+# snap/snapcraft.yaml
+name: lettercli
+base: core22
+version: 'git'
+summary: A terminal client for Letterboxd.
+description: |
+  Search for movies, view details, check user profiles, lists,
+  watchlists, and diaries directly from your terminal using LetterCLI.
+license: MIT
+confinement: strict
+grade: stable
+
+parts:
+  lettercli-app:
+    plugin: dump
+    source: ./bin/ 
+    organize:
+      'lettercli': bin/lettercli 
+
+  py-execs:
+    plugin: dump
+    source: ./py_execs/ 
+    organize:
+      '*': py_execs/ 
+    stage:
+        - py_execs/*
+
+apps:
+  lettercli:
+    command: bin/lettercli
+    plugs: ["network", "network-bind", "home"]

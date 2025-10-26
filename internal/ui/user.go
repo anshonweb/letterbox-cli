@@ -3,7 +3,10 @@ package ui
 import (
 	"encoding/json"
 	"fmt"
+	"os"
 	"os/exec"
+	"path/filepath"
+	"runtime"
 	"sort"
 	"strings"
 	"time"
@@ -153,23 +156,63 @@ func NewUserModel() UserModel {
 		tabs:            []string{"Profile", "Favorites", "Recent", "Reviews", "Social"},
 	}
 }
-
 func callPythonGetUserDetails(username string) tea.Cmd {
 	return func() tea.Msg {
-		cmd := exec.Command("python3", "../../../python/scripts/user_details.py", username)
-		out, err := cmd.Output()
-		if err != nil {
-			return userDetailsResultMsg{err: err}
+		pyExecName := "user_details"
+		if runtime.GOOS == "windows" {
+			pyExecName += ".exe"
 		}
 
+		baseDir := ""
+		snapDir := os.Getenv("SNAP")
+		if snapDir != "" {
+			baseDir = snapDir
+		} else {
+			goExecPath, err := os.Executable()
+			if err != nil {
+				return userDetailsResultMsg{err: fmt.Errorf("fatal: could not get executable path: %w", err)}
+			}
+			baseDir = filepath.Dir(goExecPath)
+		}
+
+		pyExecPath := filepath.Join(baseDir, "py_execs", pyExecName)
+
+		if _, err := os.Stat(pyExecPath); os.IsNotExist(err) {
+			wd, _ := os.Getwd()
+			arch := runtime.GOARCH
+			osDir := runtime.GOOS + "_" + arch
+			altPyExecPath := filepath.Join(wd, "..", "..", "dist_py", osDir, pyExecName)
+
+			if _, altErr := os.Stat(altPyExecPath); !os.IsNotExist(altErr) {
+				pyExecPath = altPyExecPath
+			} else {
+				return userDetailsResultMsg{err: fmt.Errorf("python executable not found at %s or %s",
+					filepath.Join("$SNAP or ExecDir", "py_execs", pyExecName),
+					filepath.Join("project_root", "dist_py", osDir, pyExecName))}
+			}
+		}
+
+		cmd := exec.Command(pyExecPath, username)
+		out, err := cmd.Output()
+
+		if err != nil {
+			var errData map[string]string
+			if json.Unmarshal(out, &errData) == nil && errData["error"] != "" {
+				return userDetailsResultMsg{err: fmt.Errorf(errData["error"])}
+			}
+			return userDetailsResultMsg{err: fmt.Errorf("failed to run script '%s': %w, output: %s", pyExecPath, err, string(out))}
+		}
+		var maybeErr map[string]string
+		if json.Unmarshal(out, &maybeErr) == nil && maybeErr["error"] != "" {
+			return userDetailsResultMsg{err: fmt.Errorf(maybeErr["error"])}
+		}
 		var details UserDetails
 		if err := json.Unmarshal(out, &details); err != nil {
-			return userDetailsResultMsg{err: err}
+			return userDetailsResultMsg{err: fmt.Errorf("failed to parse user details JSON: %w", err)}
 		}
 		return userDetailsResultMsg{details: details}
 	}
 }
-
 func (m UserModel) Init() tea.Cmd {
 	return textinput.Blink
 }

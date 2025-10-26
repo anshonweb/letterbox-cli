@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 
@@ -116,15 +117,57 @@ func NewListsModel() ListsModel {
 
 func callPythonSearchLists(query string) tea.Cmd {
 	return func() tea.Msg {
-		cmd := exec.Command("python3", "../../../python/scripts/search_lists.py", query)
-		out, err := cmd.Output()
-		if err != nil {
-			return searchListsResultMsg{err: err}
+		pyExecName := "search_lists"
+		if runtime.GOOS == "windows" {
+			pyExecName += ".exe"
 		}
 
+		baseDir := ""
+		snapDir := os.Getenv("SNAP")
+		if snapDir != "" {
+			baseDir = snapDir
+		} else {
+			goExecPath, err := os.Executable()
+			if err != nil {
+				return searchListsResultMsg{err: fmt.Errorf("fatal: could not get executable path: %w", err)}
+			}
+			baseDir = filepath.Dir(goExecPath)
+		}
+
+		pyExecPath := filepath.Join(baseDir, "py_execs", pyExecName)
+
+		if _, err := os.Stat(pyExecPath); os.IsNotExist(err) {
+			wd, _ := os.Getwd()
+			arch := runtime.GOARCH
+			osDir := runtime.GOOS + "_" + arch
+			altPyExecPath := filepath.Join(wd, "..", "..", "dist_py", osDir, pyExecName)
+
+			if _, altErr := os.Stat(altPyExecPath); !os.IsNotExist(altErr) {
+				pyExecPath = altPyExecPath
+			} else {
+				return searchListsResultMsg{err: fmt.Errorf("python executable not found at %s or %s",
+					filepath.Join("$SNAP or ExecDir", "py_execs", pyExecName),
+					filepath.Join("project_root", "dist_py", osDir, pyExecName))}
+			}
+		}
+
+		cmd := exec.Command(pyExecPath, query)
+		out, err := cmd.Output()
+
+		if err != nil {
+			var errData map[string]string
+			if json.Unmarshal(out, &errData) == nil && errData["error"] != "" {
+				return searchListsResultMsg{err: fmt.Errorf(errData["error"])}
+			}
+			return searchListsResultMsg{err: fmt.Errorf("failed to run script '%s': %w, output: %s", pyExecPath, err, string(out))}
+		}
+		var maybeErr map[string]string
+		if json.Unmarshal(out, &maybeErr) == nil && maybeErr["error"] != "" {
+			return searchListsResultMsg{err: fmt.Errorf(maybeErr["error"])}
+		}
 		var lists []ListSearchResult
 		if err := json.Unmarshal(out, &lists); err != nil {
-			return searchListsResultMsg{err: err}
+			return searchListsResultMsg{err: fmt.Errorf("failed to parse list search JSON: %w", err)}
 		}
 		return searchListsResultMsg{lists: lists}
 	}
@@ -132,20 +175,61 @@ func callPythonSearchLists(query string) tea.Cmd {
 
 func callPythonGetListDetails(owner, slug string) tea.Cmd {
 	return func() tea.Msg {
-		cmd := exec.Command("python3", "../../../python/scripts/get_list_details.py", owner, slug)
-		out, err := cmd.Output()
-		if err != nil {
-			return listDetailsResultMsg{err: err}
+		pyExecName := "get_list_details"
+		if runtime.GOOS == "windows" {
+			pyExecName += ".exe"
 		}
 
+		baseDir := ""
+		snapDir := os.Getenv("SNAP")
+		if snapDir != "" {
+			baseDir = snapDir
+		} else {
+			goExecPath, err := os.Executable()
+			if err != nil {
+				return listDetailsResultMsg{err: fmt.Errorf("fatal: could not get executable path: %w", err)}
+			}
+			baseDir = filepath.Dir(goExecPath)
+		}
+
+		pyExecPath := filepath.Join(baseDir, "py_execs", pyExecName)
+
+		if _, err := os.Stat(pyExecPath); os.IsNotExist(err) {
+			wd, _ := os.Getwd()
+			arch := runtime.GOARCH
+			osDir := runtime.GOOS + "_" + arch
+			altPyExecPath := filepath.Join(wd, "..", "..", "dist_py", osDir, pyExecName)
+
+			if _, altErr := os.Stat(altPyExecPath); !os.IsNotExist(altErr) {
+				pyExecPath = altPyExecPath
+			} else {
+				return listDetailsResultMsg{err: fmt.Errorf("python executable not found at %s or %s",
+					filepath.Join("$SNAP or ExecDir", "py_execs", pyExecName),
+					filepath.Join("project_root", "dist_py", osDir, pyExecName))}
+			}
+		}
+
+		cmd := exec.Command(pyExecPath, owner, slug)
+		out, err := cmd.Output()
+
+		if err != nil {
+			var errData map[string]string
+			if json.Unmarshal(out, &errData) == nil && errData["error"] != "" {
+				return listDetailsResultMsg{err: fmt.Errorf(errData["error"])}
+			}
+			return listDetailsResultMsg{err: fmt.Errorf("failed to run script '%s': %w, output: %s", pyExecPath, err, string(out))}
+		}
+		var maybeErr map[string]string
+		if json.Unmarshal(out, &maybeErr) == nil && maybeErr["error"] != "" {
+			return listDetailsResultMsg{err: fmt.Errorf(maybeErr["error"])}
+		}
 		var movies []Movie
 		if err := json.Unmarshal(out, &movies); err != nil {
-			return listDetailsResultMsg{err: err}
+			return listDetailsResultMsg{err: fmt.Errorf("failed to parse list details JSON: %w", err)}
 		}
 		return listDetailsResultMsg{movies: movies}
 	}
 }
-
 func exportListToCSV(movies []Movie, listName, owner, relativeFilePath string) tea.Cmd {
 	return func() tea.Msg {
 		filePath, err := filepath.Abs(relativeFilePath)

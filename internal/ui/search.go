@@ -3,7 +3,10 @@ package ui
 import (
 	"encoding/json"
 	"fmt"
+	"os"
 	"os/exec"
+	"path/filepath"
+	"runtime"
 	"strings"
 
 	"github.com/charmbracelet/bubbles/paginator"
@@ -227,31 +230,113 @@ func NewSearchModel() SearchModel {
 }
 
 func callPythonSearch(query string) ([]Movie, error) {
-	cmd := exec.Command("python3", "../../../python/scripts/search_movie.py", query)
-	out, err := cmd.Output()
-	if err != nil {
-		return nil, err
+	pyExecName := "search_movie"
+	if runtime.GOOS == "windows" {
+		pyExecName += ".exe"
 	}
 
-	var movies []Movie
-	err = json.Unmarshal(out, &movies)
+	baseDir := ""
+	snapDir := os.Getenv("SNAP")
+	if snapDir != "" {
+		baseDir = snapDir
+	} else {
+		goExecPath, err := os.Executable()
+		if err != nil {
+			return nil, fmt.Errorf("fatal: could not get executable path: %w", err)
+		}
+		baseDir = filepath.Dir(goExecPath)
+	}
+
+	pyExecPath := filepath.Join(baseDir, "py_execs", pyExecName)
+
+	if _, err := os.Stat(pyExecPath); os.IsNotExist(err) {
+		wd, _ := os.Getwd()
+		arch := runtime.GOARCH
+		osDir := runtime.GOOS + "_" + arch
+		altPyExecPath := filepath.Join(wd, "..", "..", "dist_py", osDir, pyExecName)
+
+		if _, altErr := os.Stat(altPyExecPath); !os.IsNotExist(altErr) {
+			pyExecPath = altPyExecPath
+		} else {
+			return nil, fmt.Errorf("python executable not found at %s or %s",
+				filepath.Join("$SNAP or ExecDir", "py_execs", pyExecName),
+				filepath.Join("project_root", "dist_py", osDir, pyExecName))
+		}
+	}
+
+	cmd := exec.Command(pyExecPath, query)
+	out, err := cmd.Output()
+
 	if err != nil {
-		return nil, err
+		var errData map[string]string
+		if json.Unmarshal(out, &errData) == nil && errData["error"] != "" {
+			return nil, fmt.Errorf(errData["error"])
+		}
+		return nil, fmt.Errorf("failed to run script '%s': %w, output: %s", pyExecPath, err, string(out))
+	}
+	var maybeErr map[string]string
+	if json.Unmarshal(out, &maybeErr) == nil && maybeErr["error"] != "" {
+		return nil, fmt.Errorf(maybeErr["error"])
+	}
+	var movies []Movie
+	if err := json.Unmarshal(out, &movies); err != nil {
+		return nil, fmt.Errorf("failed to parse movie search JSON: %w", err)
 	}
 	return movies, nil
 }
 
 func callPythonGetDetails(slug string) (MovieDetails, error) {
-	cmd := exec.Command("python3", "../../../python/scripts/get_movie_details.py", slug)
-	out, err := cmd.Output()
-	if err != nil {
-		return MovieDetails{}, err
+	pyExecName := "get_movie_details"
+	if runtime.GOOS == "windows" {
+		pyExecName += ".exe"
 	}
 
-	var details MovieDetails
-	err = json.Unmarshal(out, &details)
+	baseDir := ""
+	snapDir := os.Getenv("SNAP")
+	if snapDir != "" {
+		baseDir = snapDir
+	} else {
+		goExecPath, err := os.Executable()
+		if err != nil {
+			return MovieDetails{}, fmt.Errorf("fatal: could not get executable path: %w", err)
+		}
+		baseDir = filepath.Dir(goExecPath)
+	}
+
+	pyExecPath := filepath.Join(baseDir, "py_execs", pyExecName)
+
+	if _, err := os.Stat(pyExecPath); os.IsNotExist(err) {
+		wd, _ := os.Getwd()
+		arch := runtime.GOARCH
+		osDir := runtime.GOOS + "_" + arch
+		altPyExecPath := filepath.Join(wd, "..", "..", "dist_py", osDir, pyExecName)
+
+		if _, altErr := os.Stat(altPyExecPath); !os.IsNotExist(altErr) {
+			pyExecPath = altPyExecPath
+		} else {
+			return MovieDetails{}, fmt.Errorf("python executable not found at %s or %s",
+				filepath.Join("$SNAP or ExecDir", "py_execs", pyExecName),
+				filepath.Join("project_root", "dist_py", osDir, pyExecName))
+		}
+	}
+
+	cmd := exec.Command(pyExecPath, slug)
+	out, err := cmd.Output()
+
 	if err != nil {
-		return MovieDetails{}, err
+		var errData map[string]string
+		if json.Unmarshal(out, &errData) == nil && errData["error"] != "" {
+			return MovieDetails{}, fmt.Errorf(errData["error"])
+		}
+		return MovieDetails{}, fmt.Errorf("failed to run script '%s': %w, output: %s", pyExecPath, err, string(out))
+	}
+	var maybeErr map[string]string
+	if json.Unmarshal(out, &maybeErr) == nil && maybeErr["error"] != "" {
+		return MovieDetails{}, fmt.Errorf(maybeErr["error"])
+	}
+	var details MovieDetails
+	if err := json.Unmarshal(out, &details); err != nil {
+		return MovieDetails{}, fmt.Errorf("failed to parse movie details JSON: %w", err)
 	}
 	return details, nil
 }

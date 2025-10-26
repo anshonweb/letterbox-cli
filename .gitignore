@@ -1,1 +1,9 @@
 test.py
+python/scripts/build/
+python/scripts/dist/
+python/scripts/*.spec
+lettercli
+lettercli.exe
+dist/
+dist_py/
+.venv
