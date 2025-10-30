@@ -1,12 +1,12 @@
 #!/bin/bash
 set -e
 
-echo "Starting Snap build process..."
+echo "Starting Snap staging process..."
 
 GORELEASER_DIST_DIR=$(find ./dist -maxdepth 1 -type d -name 'lettercli_linux_amd64*' | head -n 1)
 if [ -z "$GORELEASER_DIST_DIR" ]; then
     echo "❌ Error: Could not find GoReleaser Linux build directory in ./dist"
-    echo "Please run 'goreleaser build --snapshot --clean' first."
+    echo "GoReleaser must run first to create the binary."
     exit 1
 fi
 echo "✅ Found GoReleaser build dir: $GORELEASER_DIST_DIR"
@@ -16,11 +16,11 @@ SNAP_CONFIG_DIR="./snap"
 ASSETS_DIR="./assets"
 SNAP_BUILD_DIR="./dist/snap_build"
 
-echo "🧹 Cleaning previous build..."
+echo "🧹 Cleaning previous build directory..."
 rm -rf "$SNAP_BUILD_DIR"
 mkdir -p "$SNAP_BUILD_DIR/bin" "$SNAP_BUILD_DIR/py_execs" "$SNAP_BUILD_DIR/assets"
 
-echo "📦 Staging files..."
+echo "📦 Staging files for Snapcraft..."
 
 if [ ! -f "$GORELEASER_DIST_DIR/lettercli" ]; then
     echo "❌ Error: lettercli binary not found in $GORELEASER_DIST_DIR"
@@ -47,23 +47,10 @@ echo "✅ Copied snapcraft.yaml."
 if [ ! -d "$ASSETS_DIR" ] || [ -z "$(ls -A "$ASSETS_DIR")" ]; then
     echo "⚠️ Warning: Assets directory ($ASSETS_DIR) not found or empty. Continuing anyway."
 else
-    cp "$ASSETS_DIR"/* "$SNAP_BUILD_DIR/assets/"
+    cp -r "$ASSETS_DIR"/* "$SNAP_BUILD_DIR/assets/"
     echo "✅ Copied assets."
 fi
 
-echo "🚀 Running Snapcraft (in destructive mode)..."
-cd "$SNAP_BUILD_DIR"
-
-snapcraft pack --destructive-mode
-
-echo "📁 Moving snap file..."
-SNAP_FILE=$(find . -maxdepth 1 -name '*.snap' | head -n 1)
-if [ -n "$SNAP_FILE" ]; then
-    mv "$SNAP_FILE" ../
-    echo "✅ Snap file moved to dist/."
-else
-    echo "⚠️ Warning: Could not find generated .snap file to move."
-fi
-
-echo "✅ Snap build complete."
+echo "✅ Snap staging complete. Handing over to snapcore/action-build."
 cd ../..
+

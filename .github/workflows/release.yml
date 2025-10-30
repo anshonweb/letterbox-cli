@@ -3,7 +3,7 @@ name: Release LetterCLI
 on:
   push:
     tags:
-      - 'v*'
+      - "v*"
 
 permissions:
   contents: write
@@ -15,29 +15,34 @@ jobs:
     name: Build Python Executables (Linux)
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout code
+      - name: Checkout
         uses: actions/checkout@v4
 
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.10'
+          python-version: "3.10"
+
+      - name: Cache pip
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('python/scripts/requirements.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
 
       - name: Install Python dependencies
         run: |
+          pip install --upgrade pip
           pip install pyinstaller
           pip install -r python/scripts/requirements.txt
 
       - name: Build Linux Executables
         run: |
           cd python/scripts
-          pyinstaller --onefile --clean get_diary.py
-          pyinstaller --onefile --clean get_list_details.py
-          pyinstaller --onefile --clean get_movie_details.py
-          pyinstaller --onefile --clean get_watchlist.py
-          pyinstaller --onefile --clean search_lists.py
-          pyinstaller --onefile --clean search_movie.py
-          pyinstaller --onefile --clean user_details.py
+          for s in get_diary get_list_details get_movie_details get_watchlist search_lists search_movie user_details; do
+            pyinstaller --onefile --clean "$s.py"
+          done
           cd ../..
           mkdir -p dist_py/linux_amd64
           cp python/scripts/dist/* dist_py/linux_amd64/
@@ -52,46 +57,46 @@ jobs:
     name: Build Python Executables (Windows)
     runs-on: windows-latest
     steps:
-      - name: Checkout code
+      - name: Checkout
         uses: actions/checkout@v4
 
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.10'
+          python-version: "3.10"
 
       - name: Install Python dependencies
         run: |
+          pip install --upgrade pip
           pip install pyinstaller
           pip install -r python/scripts/requirements.txt
 
       - name: Build Windows Executables
+        shell: pwsh
         run: |
-          cd python/scripts
-          pyinstaller --onefile --clean get_diary.py
-          pyinstaller --onefile --clean get_list_details.py
-          pyinstaller --onefile --clean get_movie_details.py
-          pyinstaller --onefile --clean get_watchlist.py
-          pyinstaller --onefile --clean search_lists.py
-          pyinstaller --onefile --clean search_movie.py
-          pyinstaller --onefile --clean user_details.py
-          cd ..\..
-          mkdir -p dist_py\windows_amd64
-          copy python\scripts\dist\*.exe dist_py\windows_amd64\
+          Set-Location python/scripts
+          $scripts = @('get_diary','get_list_details','get_movie_details','get_watchlist','search_lists','search_movie','user_details')
+          foreach ($s in $scripts) {
+            pyinstaller --onefile --clean "$($s).py"
+          }
+          Set-Location ../..
+          New-Item -ItemType Directory -Force -Path dist_py/windows_amd64 | Out-Null
+          Copy-Item python/scripts/dist/*.exe dist_py/windows_amd64/ -Force
 
       - name: Upload Windows Executables
         uses: actions/upload-artifact@v4
         with:
           name: windows-py-execs
-          path: dist_py\windows_amd64\
+          path: dist_py/windows_amd64/
 
   release-goreleaser:
     name: Build & Release (GoReleaser + Snap)
-    needs: [build-python-linux, build-python-windows]
+    needs:
+      - build-python-linux
+      - build-python-windows
     runs-on: ubuntu-latest
-
     steps:
-      - name: Checkout code
+      - name: Checkout
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
@@ -100,9 +105,6 @@ jobs:
         uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
-
-      - name: Install Snapcraft
-        run: sudo snap install snapcraft --classic
 
       - name: Download Linux Python Execs
         uses: actions/download-artifact@v4
@@ -117,9 +119,9 @@ jobs:
           path: dist_py/windows_amd64/
 
       - name: Make Python Execs Executable
-        run: chmod +x dist_py/linux_amd64/*
+        run: chmod +x dist_py/linux_amd64/* || true
 
-      - name: Run GoReleaser
+      - name: Run GoReleaser (build and publish)
         uses: goreleaser/goreleaser-action@v5
         with:
           version: latest
@@ -127,21 +129,28 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build Snap Package
+      - name: Stage Snap Files
         run: |
-          chmod +x ./scripts/build_snap.sh
+          echo "Staging files for Snap build..."
+          chmod +x ./scripts/build_snap.sh || true
           ./scripts/build_snap.sh
+          cp -r .git dist/snap_build/.git
 
-      - name: Publish Snap to Store (if credentials added)
-        if: env.SNAPCRAFT_STORE_CREDENTIALS != ''
+      - name: Build Snap Package
+        id: snapcraft
+        uses: snapcore/action-build@v1
+        with:
+          path: dist/snap_build
+
+      - name: Publish Snap to Store (only if credentials are present)
         env:
           SNAPCRAFT_STORE_CREDENTIALS: ${{ secrets.SNAPCRAFT_STORE_CREDENTIALS }}
         run: |
-          echo "Pushing Snap to store..."
-          SNAP_FILE=$(find dist/ -name "*.snap" | head -n 1)
-          if [ -f "$SNAP_FILE" ]; then
-            snapcraft push "$SNAP_FILE" --release=stable
+          if [ -n "$SNAPCRAFT_STORE_CREDENTIALS" ]; then
+            echo "Publishing Snap to Store..."
+            export SNAPCRAFT_STORE_CREDENTIALS="$SNAPCRAFT_STORE_CREDENTIALS"
+            snapcraft upload "${{ steps.snapcraft.outputs.snap }}" --release=stable
           else
-            echo "Snap file not found in dist/, skipping push."
-            exit 1
+            echo "SNAPCRAFT_STORE_CREDENTIALS not set. Skipping publish."
           fi
+
