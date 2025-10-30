@@ -13,17 +13,26 @@ grade: stable
 parts:
   lettercli-app:
     plugin: dump
-    source: ./bin/ 
+    source: ./bin/
     organize:
-      'lettercli': bin/lettercli 
+      'lettercli': bin/lettercli
+
 
   py-execs:
     plugin: dump
-    source: ./py_execs/ 
+    source: ./py_execs/
     organize:
-      '*': py_execs/ 
+      '*': py_execs/
     stage:
         - py_execs/*
+
+  assets:
+    plugin: dump
+    source: ./assets/ 
+    organize:
+      '*': assets/   
+    stage:
+      - assets/* 
 
 apps:
   lettercli:

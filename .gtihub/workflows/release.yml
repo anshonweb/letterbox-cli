@@ -1,0 +1,152 @@
+name: Release LetterCLI
+
+on:
+  push:
+    tags:
+      - 'v*' 
+
+permissions:
+  contents: write
+  packages: write 
+
+jobs:
+  build-python-linux:
+    name: Build Python Execs (Linux)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r python/scripts/requirements.txt
+      
+      - name: Run PyInstaller for all scripts (Linux)
+        run: |
+          cd python/scripts
+          pyinstaller --onefile --clean get_diary.py
+          pyinstaller --onefile --clean get_list_details.py
+          pyinstaller --onefile --clean get_movie_details.py
+          pyinstaller --onefile --clean get_watchlist.py
+          pyinstaller --onefile --clean search_lists.py
+          pyinstaller --onefile --clean search_movie.py
+          pyinstaller --onefile --clean user_details.py
+          cd ../..
+      
+      - name: Upload Linux executables
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-py-execs 
+          path: python/scripts/dist/ 
+
+  build-python-windows:
+    name: Build Python Execs (Windows)
+    runs-on: windows-latest
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r python/scripts/requirements.txt
+      
+      - name: Run PyInstaller for all scripts (Windows)
+        run: |
+          cd python\scripts
+          pyinstaller --onefile --clean get_diary.py
+          pyinstaller --onefile --clean get_list_details.py
+          pyinstaller --onefile --clean get_movie_details.py
+          pyinstaller --onefile --clean get_watchlist.py
+          pyinstaller --onefile --clean search_lists.py
+          pyinstaller --onefile --clean search_movie.py
+          pyinstaller --onefile --clean user_details.py
+          cd ..\..
+      
+      - name: Upload Windows executables
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-py-execs 
+          path: python/scripts/dist/*.exe 
+
+  release-goreleaser:
+    name: Build & Release
+    runs-on: ubuntu-latest
+    needs: [build-python-linux, build-python-windows] 
+    
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.21' 
+          cache: true
+
+      - name: Set up Snapcraft and LXD
+        run: |
+          sudo snap install snapcraft --classic
+          sudo snap install lxd
+          sudo lxd init --auto
+          sudo usermod -a -G lxd $USER # Add runner user to LXD group
+
+      - name: Download Linux Python execs
+        uses: actions/download-artifact@v4
+        with:
+          name: linux-py-execs
+          path: dist_py/linux_amd64/
+
+      - name: Download Windows Python execs
+        uses: actions/download-artifact@v4
+        with:
+          name: windows-py-execs
+          path: dist_py/windows_amd64/
+
+      - name: Make assets executable
+        run: |
+          chmod +x dist_py/linux_amd64/*
+          chmod +x ./scripts/build_snap.sh
+
+      - name: Run GoReleaser
+        run: |
+          curl -sSfL https://install.goreleaser.com/github.com/goreleaser/goreleaser.sh | sh -s -- -b /usr/local/bin
+          # Run the release. GITHUB_TOKEN is provided automatically.
+          goreleaser release --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Run Snap Build Script
+        if: success() 
+        run: |
+          # GoReleaser has built the Go binary, now run our manual snap build
+          ./scripts/build_snap.sh
+  
+      - name: Push to Snap Store
+        if: success() 
+        env:
+          SNAPCRAFT_STORE_CREDENTIALS: ${{ secrets.SNAPCRAFT_STORE_CREDENTIALS }}
+        run: |
+          # Find the .snap file in the dist directory
+          SNAP_FILE=$(find dist/ -name "*.snap" | head -n 1)
+          if [ -f "$SNAP_FILE" ]; then
+            echo "Pushing $SNAP_FILE to Snap Store..."
+            snapcraft push $SNAP_FILE --release=stable
+          else
+            echo "Error: .snap file not found in dist/."
+            exit 1
+          fi
+

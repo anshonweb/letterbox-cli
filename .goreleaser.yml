@@ -28,6 +28,9 @@ archives:
     files:
       - README.md
       - LICENSE
+      - src: "./assets/*"
+        dst: "./assets/"
+        strip_parent: true
       - src: "./dist_py/{{ .Os }}_{{ .Arch }}/*"
         dst: "./py_execs/"
         info:
@@ -51,4 +54,6 @@ release:
   github:
     owner: anshonweb 
     name: letterbox-cli  
-
+  
+  extra_files:
+    - glob: ./dist/*.snap

@@ -1,0 +1,15 @@
+altgraph==0.17.4
+beautifulsoup4==4.12.3
+certifi==2025.10.5
+charset-normalizer==3.4.3
+idna==3.11
+JustWatch==0.5.1
+letterboxdpy @ git+https://github.com/nmcassa/letterboxdpy.git@52c7f52c804972f5180788535cd8fe3a26a2689d
+lxml==5.1.0
+packaging==25.0
+pyinstaller==6.16.0
+pyinstaller-hooks-contrib==2025.9
+requests==2.31.0
+soupsieve==2.8
+urllib3==2.5.0
+validators==0.35.0
