@@ -6,7 +6,7 @@ echo "Starting Snap build process..."
 GORELEASER_DIST_DIR=$(find ./dist -maxdepth 1 -type d -name 'lettercli_linux_amd64*' | head -n 1)
 if [ -z "$GORELEASER_DIST_DIR" ]; then
     echo "❌ Error: Could not find GoReleaser Linux build directory in ./dist"
-    echo "Please run 'goreleaser build --snapshot --clean' first."
+    echo "Please run 'goreleaser release --clean' first."
     exit 1
 fi
 echo "✅ Found GoReleaser build dir: $GORELEASER_DIST_DIR"
@@ -47,14 +47,15 @@ echo "✅ Copied snapcraft.yaml."
 if [ ! -d "$ASSETS_DIR" ] || [ -z "$(ls -A "$ASSETS_DIR")" ]; then
     echo "⚠️ Warning: Assets directory ($ASSETS_DIR) not found or empty. Continuing anyway."
 else
-    cp "$ASSETS_DIR"/* "$SNAP_BUILD_DIR/assets/"
+    cp -r "$ASSETS_DIR"/* "$SNAP_BUILD_DIR/assets/" 
     echo "✅ Copied assets."
 fi
 
 echo "🚀 Running Snapcraft (in destructive mode)..."
 cd "$SNAP_BUILD_DIR"
 
-snapcraft pack --destructive-mode --use-lxd=false
+
+snapcraft pack --destructive-mode
 
 echo "📁 Moving snap file..."
 SNAP_FILE=$(find . -maxdepth 1 -name '*.snap' | head -n 1)
@@ -67,3 +68,4 @@ fi
 
 echo "✅ Snap build complete."
 cd ../..
+
