@@ -127,6 +127,12 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+      # ✅ New step: run your Snap build script
+      - name: Build Snap Package
+        run: |
+          chmod +x ./scripts/build_snap.sh
+          ./scripts/build_snap.sh
+
       - name: Publish Snap to Store (if credentials added)
         env:
           SNAPCRAFT_STORE_CREDENTIALS: ${{ secrets.SNAPCRAFT_STORE_CREDENTIALS }}
@@ -143,4 +149,5 @@ jobs:
             echo "Snap file not found in dist/, skipping push."
             exit 1
           fi
+
 
