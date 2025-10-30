@@ -14,30 +14,39 @@ jobs:
   build-python-linux:
     name: Build Python Executables (Linux)
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.10'
+
+      - name: Cache pip
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('python/scripts/requirements.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
+
       - name: Install Python dependencies
         run: |
           pip install pyinstaller
           pip install -r python/scripts/requirements.txt
+
       - name: Build Linux Executables
         run: |
           cd python/scripts
-          pyinstaller --onefile --clean get_diary.py
-          pyinstaller --onefile --clean get_list_details.py
-          pyinstaller --onefile --clean get_movie_details.py
-          pyinstaller --onefile --clean get_watchlist.py
-          pyinstaller --onefile --clean search_lists.py
-          pyinstaller --onefile --clean search_movie.py
-          pyinstaller --onefile --clean user_details.py
+          for script in get_diary get_list_details get_movie_details get_watchlist search_lists search_movie user_details; do
+            pyinstaller --onefile --clean "$script.py"
+          done
           cd ../..
           mkdir -p dist_py/linux_amd64
           cp python/scripts/dist/* dist_py/linux_amd64/
+
       - name: Upload Linux Executables
         uses: actions/upload-artifact@v4
         with:
@@ -47,43 +56,46 @@ jobs:
   build-python-windows:
     name: Build Python Executables (Windows)
     runs-on: windows-latest
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.10'
+
       - name: Install Python dependencies
         run: |
           pip install pyinstaller
           pip install -r python/scripts/requirements.txt
+
       - name: Build Windows Executables
+        shell: pwsh
         run: |
           cd python/scripts
-          pyinstaller --onefile --clean get_diary.py
-          pyinstaller --onefile --clean get_list_details.py
-          pyinstaller --onefile --clean get_movie_details.py
-          pyinstaller --onefile --clean get_watchlist.py
-          pyinstaller --onefile --clean search_lists.py
-          pyinstaller --onefile --clean search_movie.py
-          pyinstaller --onefile --clean user_details.py
-          cd ..\..
-          mkdir -p dist_py\windows_amd64
-          copy python\scripts\dist\*.exe dist_py\windows_amd64\
+          $scripts = @(
+            "get_diary", "get_list_details", "get_movie_details",
+            "get_watchlist", "search_lists", "search_movie", "user_details"
+          )
+          foreach ($s in $scripts) {
+            pyinstaller --onefile --clean "$s.py"
+          }
+          cd ../..
+          New-Item -ItemType Directory -Force -Path dist_py/windows_amd64 | Out-Null
+          Copy-Item python/scripts/dist/*.exe dist_py/windows_amd64/
+
       - name: Upload Windows Executables
         uses: actions/upload-artifact@v4
         with:
           name: windows-py-execs
-          path: dist_py\windows_amd64\
+          path: dist_py/windows_amd64/
 
   release-goreleaser:
     name: Build & Release (GoReleaser + Snap)
     needs: [build-python-linux, build-python-windows]
     runs-on: ubuntu-latest
-    
-    outputs: 
-      release_upload_url: ${{ steps.goreleaser.outputs.release_upload_url }}
 
     steps:
       - name: Checkout code
@@ -111,15 +123,14 @@ jobs:
       - name: Make Python Execs Executable
         run: chmod +x dist_py/linux_amd64/*
 
-      - name: Run GoReleaser (Builds Binaries & Archives)
-        id: goreleaser 
+      - name: Run GoReleaser (Builds Binaries & Publishes Release)
         uses: goreleaser/goreleaser-action@v5
         with:
-          version: latest 
-          args: release --clean 
+          version: latest
+          args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      
+
       - name: Stage Snap Files
         run: |
           echo "Staging files for Snap build..."
@@ -127,31 +138,27 @@ jobs:
           ./scripts/build_snap.sh
 
       - name: Build Snap Package
-        uses: snapcore/action-build@v1
         id: snapcraft
+        uses: snapcore/action-build@v1
         with:
           path: dist/snap_build
-          
-      - name: Upload Snap to Release
-        uses: actions/upload-release-asset@v1
-        if: success()
+
+      - name: Debug Snap output
+        run: echo "Built Snap path: ${{ steps.snapcraft.outputs.snap }}"
+
+      - name: Upload Snap to GitHub Release
+        if: success() && steps.snapcraft.outputs.snap != ''
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ steps.snapcraft.outputs.snap }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ steps.goreleaser.outputs.release_upload_url }}
-          asset_path: ${{ steps.snapcraft.outputs.snap }}
-          asset_name: ${{ steps.snapcraft.outputs.snap }}
-          asset_content_type: application/vnd.snap
 
-      - name: Publish Snap to Store (if credentials added)
+
+      - name: Publish Snap to Store
+        if: success() && secrets.SNAPCRAFT_STORE_CREDENTIALS != ''
         uses: snapcore/action-publish@v1
-        env:
-          SNAP_SECRET_IS_SET: ${{ secrets.SNAPCRAFT_STORE_CREDENTIALS != '' }}
-
-        if: success() && env.SNAP_SECRET_IS_SET == 'true'
-
         with:
           store_credentials: ${{ secrets.SNAPCRAFT_STORE_CREDENTIALS }}
           snap: ${{ steps.snapcraft.outputs.snap }}
-          release: stable 
-
+          release: stable
