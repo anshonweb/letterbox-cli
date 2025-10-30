@@ -3,11 +3,11 @@ name: Release LetterCLI
 on:
   push:
     tags:
-      - 'v*'
+      - 'v*' 
 
 permissions:
   contents: write 
-  packages: write 
+  packages: write
   id-token: write 
 
 jobs:
@@ -127,7 +127,6 @@ jobs:
       - name: Make Python Execs Executable
         run: chmod +x dist_py/linux_amd64/*
 
-
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@v5
         with:
@@ -135,10 +134,12 @@ jobs:
           args: release --clean 
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          
       - name: Publish Snap to Store (if credentials added)
-        if: success() && secrets.SNAPCRAFT_STORE_CREDENTIALS != ''
         env:
           SNAPCRAFT_STORE_CREDENTIALS: ${{ secrets.SNAPCRAFT_STORE_CREDENTIALS }}
+          SNAP_SECRET_IS_SET: ${{ secrets.SNAPCRAFT_STORE_CREDENTIALS != '' }}
+        if: success() && env.SNAP_SECRET_IS_SET == 'true'
         run: |
           echo "Pushing Snap to store..."
           # Find the built .snap file in the dist directory
