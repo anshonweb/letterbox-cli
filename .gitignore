@@ -7,3 +7,4 @@ lettercli.exe
 dist/
 dist_py/
 .venv
+bin

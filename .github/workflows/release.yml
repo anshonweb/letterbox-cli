@@ -148,8 +148,7 @@ jobs:
         run: |
           if [ -n "$SNAPCRAFT_STORE_CREDENTIALS" ]; then
             echo "Publishing Snap to Store..."
-            echo "$SNAPCRAFT_STORE_CREDENTIALS" > snap_login.json
-            snapcraft login --with snap_login.json
+            export SNAPCRAFT_STORE_CREDENTIALS="$SNAPCRAFT_STORE_CREDENTIALS"
             snapcraft upload "${{ steps.snapcraft.outputs.snap }}" --release=stable
           else
             echo "SNAPCRAFT_STORE_CREDENTIALS not set. Skipping publish."
