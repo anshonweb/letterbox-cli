@@ -127,3 +127,5 @@ See the LICENSE file in the repository for the full text.
 - [**Charm**](https://github.com/charmbracelet "null") for their incredible Go libraries (Bubble Tea, Lipgloss, Bubbles) that make building beautiful TUIs possible.
     
 - [**superstarryeyes/bit**](https://github.com/superstarryeyes/bit "null") for the colored ASCII art logo.
+
+- [**nmcassa/letterboxdpy**](https://github.com/nmcassa/letterboxdpy "null") for the letterboxd python scraper.
