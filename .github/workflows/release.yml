@@ -131,8 +131,11 @@ jobs:
 
       - name: Stage Snap Files
         run: |
+          echo "Staging files for Snap build..."
           chmod +x ./scripts/build_snap.sh || true
-          if [ -x ./scripts/build_snap.sh ]; then ./scripts/build_snap.sh; fi
+          ./scripts/build_snap.sh
+          # Copy .git so snapcraft can determine version
+          cp -r .git dist/snap_build/.git
 
       - name: Build Snap Package
         id: snapcraft
