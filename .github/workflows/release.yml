@@ -86,68 +86,60 @@ jobs:
           path: dist_py\windows_amd64\
 
   release-goreleaser:
-    name: Build & Release (GoReleaser + Snap)
-    needs: [build-python-linux, build-python-windows]
-    runs-on: ubuntu-latest
-    
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0 
+  name: Build & Release (GoReleaser + Snap)
+  needs: [build-python-linux, build-python-windows]
+  runs-on: ubuntu-latest
+  
+  steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0 
 
-      - name: Set up Go
-        uses: actions/setup-go@v5
-        with:
-          go-version-file: go.mod
+    - name: Set up Go
+      uses: actions/setup-go@v5
+      with:
+        go-version-file: go.mod
 
-      - name: Set up Snapcraft
-        uses: snapcore/action-setup-snapcraft@v2
-        with:
-          snapcraft-channel: stable
+    - name: Install Snapcraft
+      run: sudo snap install snapcraft --classic
 
-      - name: Set up LXD (for Snap build)
-        run: |
-          sudo snap install lxd
-          sudo lxd init --auto
-          sudo usermod -a -G lxd $USER
+    - name: Download Linux Python Execs
+      uses: actions/download-artifact@v4
+      with:
+        name: linux-py-execs
+        path: dist_py/linux_amd64/
 
-      - name: Download Linux Python Execs
-        uses: actions/download-artifact@v4
-        with:
-          name: linux-py-execs
-          path: dist_py/linux_amd64/
+    - name: Download Windows Python Execs
+      uses: actions/download-artifact@v4
+      with:
+        name: windows-py-execs
+        path: dist_py/windows_amd64/
 
-      - name: Download Windows Python Execs
-        uses: actions/download-artifact@v4
-        with:
-          name: windows-py-execs
-          path: dist_py/windows_amd64/
+    - name: Make Python Execs Executable
+      run: chmod +x dist_py/linux_amd64/*
 
-      - name: Make Python Execs Executable
-        run: chmod +x dist_py/linux_amd64/*
+    - name: Run GoReleaser
+      uses: goreleaser/goreleaser-action@v5
+      with:
+        version: latest
+        args: release --clean
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Run GoReleaser
-        uses: goreleaser/goreleaser-action@v5
-        with:
-          version: latest 
-          args: release --clean 
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          
-      - name: Publish Snap to Store (if credentials added)
-        env:
-          SNAPCRAFT_STORE_CREDENTIALS: ${{ secrets.SNAPCRAFT_STORE_CREDENTIALS }}
-          SNAP_SECRET_IS_SET: ${{ secrets.SNAPCRAFT_STORE_CREDENTIALS != '' }}
-        if: success() && env.SNAP_SECRET_IS_SET == 'true'
-        run: |
-          echo "Pushing Snap to store..."
-          # Find the built .snap file in the dist directory
-          SNAP_FILE=$(find dist/ -name "*.snap" | head -n 1)
-          if [ -f "$SNAP_FILE" ]; then
-            snapcraft push $SNAP_FILE --release=stable
-          else
-            echo "Snap file not found in dist/, skipping push."
-            exit 1
-          fi
+    - name: Publish Snap to Store (if credentials added)
+      env:
+        SNAPCRAFT_STORE_CREDENTIALS: ${{ secrets.SNAPCRAFT_STORE_CREDENTIALS }}
+        SNAP_SECRET_IS_SET: ${{ secrets.SNAPCRAFT_STORE_CREDENTIALS != '' }}
+      if: success() && env.SNAP_SECRET_IS_SET == 'true'
+      run: |
+        echo "Pushing Snap to store..."
+        SNAP_FILE=$(find dist/ -name "*.snap" | head -n 1)
+        if [ -f "$SNAP_FILE" ]; then
+          snapcraft push "$SNAP_FILE" --release=stable
+        else
+          echo "Snap file not found in dist/, skipping push."
+          exit 1
+        fi
+
 
