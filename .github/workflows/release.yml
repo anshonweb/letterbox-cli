@@ -14,7 +14,6 @@ jobs:
   build-python-linux:
     name: Build Python Executables (Linux)
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -22,7 +21,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.10'
+          python-version: "3.10"
 
       - name: Cache pip
         uses: actions/cache@v4
@@ -34,6 +33,7 @@ jobs:
 
       - name: Install Python dependencies
         run: |
+          pip install --upgrade pip
           pip install pyinstaller
           pip install -r python/scripts/requirements.txt
 
@@ -41,7 +41,7 @@ jobs:
         run: |
           cd python/scripts
           for script in get_diary get_list_details get_movie_details get_watchlist search_lists search_movie user_details; do
-            pyinstaller --onefile --clean "$script.py"
+            pyinstaller --onefile --clean "${script}.py"
           done
           cd ../..
           mkdir -p dist_py/linux_amd64
@@ -56,7 +56,6 @@ jobs:
   build-python-windows:
     name: Build Python Executables (Windows)
     runs-on: windows-latest
-
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -64,27 +63,28 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.10'
+          python-version: "3.10"
 
       - name: Install Python dependencies
         run: |
+          pip install --upgrade pip
           pip install pyinstaller
           pip install -r python/scripts/requirements.txt
 
       - name: Build Windows Executables
         shell: pwsh
         run: |
-          cd python/scripts
+          Set-Location python/scripts
           $scripts = @(
-            "get_diary", "get_list_details", "get_movie_details",
-            "get_watchlist", "search_lists", "search_movie", "user_details"
+            'get_diary', 'get_list_details', 'get_movie_details',
+            'get_watchlist', 'search_lists', 'search_movie', 'user_details'
           )
           foreach ($s in $scripts) {
-            pyinstaller --onefile --clean "$s.py"
+            pyinstaller --onefile --clean "$($s).py"
           }
-          cd ../..
+          Set-Location ../..
           New-Item -ItemType Directory -Force -Path dist_py/windows_amd64 | Out-Null
-          Copy-Item python/scripts/dist/*.exe dist_py/windows_amd64/
+          Copy-Item python/scripts/dist/*.exe dist_py/windows_amd64/ -Force
 
       - name: Upload Windows Executables
         uses: actions/upload-artifact@v4
@@ -94,9 +94,10 @@ jobs:
 
   release-goreleaser:
     name: Build & Release (GoReleaser + Snap)
-    needs: [build-python-linux, build-python-windows]
+    needs:
+      - build-python-linux
+      - build-python-windows
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -121,7 +122,7 @@ jobs:
           path: dist_py/windows_amd64/
 
       - name: Make Python Execs Executable
-        run: chmod +x dist_py/linux_amd64/*
+        run: chmod +x dist_py/linux_amd64/* || true
 
       - name: Run GoReleaser (Builds Binaries & Publishes Release)
         uses: goreleaser/goreleaser-action@v5
@@ -134,8 +135,8 @@ jobs:
       - name: Stage Snap Files
         run: |
           echo "Staging files for Snap build..."
-          chmod +x ./scripts/build_snap.sh
-          ./scripts/build_snap.sh
+          chmod +x ./scripts/build_snap.sh || true
+          if [ -x ./scripts/build_snap.sh ]; then ./scripts/build_snap.sh; fi
 
       - name: Build Snap Package
         id: snapcraft
@@ -144,19 +145,18 @@ jobs:
           path: dist/snap_build
 
       - name: Debug Snap output
-        run: echo "Built Snap path: ${{ steps.snapcraft.outputs.snap }}"
+        run: echo "Built Snap path: '${{ steps.snapcraft.outputs.snap }}'"
 
       - name: Upload Snap to GitHub Release
-        if: success() && steps.snapcraft.outputs.snap != ''
+        if: ${{ success() && steps.snapcraft.outputs.snap != '' }}
         uses: softprops/action-gh-release@v2
         with:
           files: ${{ steps.snapcraft.outputs.snap }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-
       - name: Publish Snap to Store
-        if: success() && secrets.SNAPCRAFT_STORE_CREDENTIALS != ''
+        if: ${{ success() && secrets.SNAPCRAFT_STORE_CREDENTIALS != '' }}
         uses: snapcore/action-publish@v1
         with:
           store_credentials: ${{ secrets.SNAPCRAFT_STORE_CREDENTIALS }}
