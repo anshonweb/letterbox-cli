@@ -41,7 +41,10 @@ jobs:
         run: |
           cd python/scripts
           for s in get_diary get_list_details get_movie_details get_watchlist search_lists search_movie user_details; do
-            pyinstaller --onefile --clean --runtime-tmpdir "\$SNAP_USER_DATA/.pyitmp" "$s.py"
+            # ---
+            # THE FIX: Added --runtime-tmpdir flag to match your local build
+            # ---
+            pyinstaller --onefile --clean --runtime-tmpdir "\$SNAP_DATA/.pyitmp" "$s.py"
           done
           cd ../..
           mkdir -p dist_py/linux_amd64
@@ -77,7 +80,7 @@ jobs:
           Set-Location python/scripts
           $scripts = @('get_diary','get_list_details','get_movie_details','get_watchlist','search_lists','search_movie','user_details')
           foreach ($s in $scripts) {
-            pyinstaller --onefile --clean "$($s).py"
+            pyinstaller --onefile --clean --runtime-tmpdir "\$SNAP_DATA/.pyitmp" "$s.py"
           }
           Set-Location ../..
           New-Item -ItemType Directory -Force -Path dist_py/windows_amd64 | Out-Null
