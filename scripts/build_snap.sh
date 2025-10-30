@@ -54,7 +54,7 @@ fi
 echo "🚀 Running Snapcraft (in destructive mode)..."
 cd "$SNAP_BUILD_DIR"
 
-snapcraft pack --destructive-mode
+snapcraft pack --destructive-mode --use-lxd=false
 
 echo "📁 Moving snap file..."
 SNAP_FILE=$(find . -maxdepth 1 -name '*.snap' | head -n 1)
