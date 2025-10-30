@@ -3,7 +3,7 @@ name: Release LetterCLI
 on:
   push:
     tags:
-      - 'v*'
+      - "v*"
 
 permissions:
   contents: write
@@ -15,7 +15,7 @@ jobs:
     name: Build Python Executables (Linux)
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout code
+      - name: Checkout
         uses: actions/checkout@v4
 
       - name: Set up Python
@@ -40,8 +40,8 @@ jobs:
       - name: Build Linux Executables
         run: |
           cd python/scripts
-          for script in get_diary get_list_details get_movie_details get_watchlist search_lists search_movie user_details; do
-            pyinstaller --onefile --clean "${script}.py"
+          for s in get_diary get_list_details get_movie_details get_watchlist search_lists search_movie user_details; do
+            pyinstaller --onefile --clean "$s.py"
           done
           cd ../..
           mkdir -p dist_py/linux_amd64
@@ -57,7 +57,7 @@ jobs:
     name: Build Python Executables (Windows)
     runs-on: windows-latest
     steps:
-      - name: Checkout code
+      - name: Checkout
         uses: actions/checkout@v4
 
       - name: Set up Python
@@ -75,10 +75,7 @@ jobs:
         shell: pwsh
         run: |
           Set-Location python/scripts
-          $scripts = @(
-            'get_diary', 'get_list_details', 'get_movie_details',
-            'get_watchlist', 'search_lists', 'search_movie', 'user_details'
-          )
+          $scripts = @('get_diary','get_list_details','get_movie_details','get_watchlist','search_lists','search_movie','user_details')
           foreach ($s in $scripts) {
             pyinstaller --onefile --clean "$($s).py"
           }
@@ -99,7 +96,7 @@ jobs:
       - build-python-windows
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout code
+      - name: Checkout
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
@@ -124,7 +121,7 @@ jobs:
       - name: Make Python Execs Executable
         run: chmod +x dist_py/linux_amd64/* || true
 
-      - name: Run GoReleaser (Builds Binaries & Publishes Release)
+      - name: Run GoReleaser (build and publish)
         uses: goreleaser/goreleaser-action@v5
         with:
           version: latest
@@ -134,7 +131,6 @@ jobs:
 
       - name: Stage Snap Files
         run: |
-          echo "Staging files for Snap build..."
           chmod +x ./scripts/build_snap.sh || true
           if [ -x ./scripts/build_snap.sh ]; then ./scripts/build_snap.sh; fi
 
@@ -144,18 +140,7 @@ jobs:
         with:
           path: dist/snap_build
 
-      - name: Debug Snap output
-        run: echo "Built Snap path: '${{ steps.snapcraft.outputs.snap }}'"
-
-      - name: Upload Snap to GitHub Release
-        if: ${{ success() && steps.snapcraft.outputs.snap != '' }}
-        uses: softprops/action-gh-release@v2
-        with:
-          files: ${{ steps.snapcraft.outputs.snap }}
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Publish Snap to Store
+      - name: Publish Snap to Store (only if credentials are present)
         if: ${{ success() && secrets.SNAPCRAFT_STORE_CREDENTIALS != '' }}
         uses: snapcore/action-publish@v1
         with:
