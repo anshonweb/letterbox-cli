@@ -41,7 +41,7 @@ jobs:
         run: |
           cd python/scripts
           for s in get_diary get_list_details get_movie_details get_watchlist search_lists search_movie user_details; do
-            pyinstaller --onefile --clean "$s.py"
+            pyinstaller --onefile --clean --runtime-tmpdir "\$SNAP_USER_DATA/.pyitmp" "$s.py"
           done
           cd ../..
           mkdir -p dist_py/linux_amd64
