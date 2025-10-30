@@ -3,12 +3,12 @@ name: Release LetterCLI
 on:
   push:
     tags:
-      - 'v*' 
+      - 'v*'
 
 permissions:
-  contents: write 
+  contents: write
   packages: write
-  id-token: write 
+  id-token: write
 
 jobs:
   build-python-linux:
@@ -21,7 +21,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.10' 
+          python-version: '3.10'
 
       - name: Install Python dependencies
         run: |
@@ -38,7 +38,7 @@ jobs:
           pyinstaller --onefile --clean search_lists.py
           pyinstaller --onefile --clean search_movie.py
           pyinstaller --onefile --clean user_details.py
-          cd ../.. # Back to root
+          cd ../..
           mkdir -p dist_py/linux_amd64
           cp python/scripts/dist/* dist_py/linux_amd64/
 
@@ -75,7 +75,7 @@ jobs:
           pyinstaller --onefile --clean search_lists.py
           pyinstaller --onefile --clean search_movie.py
           pyinstaller --onefile --clean user_details.py
-          cd ..\.. # Back to root
+          cd ..\..
           mkdir -p dist_py\windows_amd64
           copy python\scripts\dist\*.exe dist_py\windows_amd64\
 
@@ -86,60 +86,57 @@ jobs:
           path: dist_py\windows_amd64\
 
   release-goreleaser:
-  name: Build & Release (GoReleaser + Snap)
-  needs: [build-python-linux, build-python-windows]
-  runs-on: ubuntu-latest
-  
-  steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-      with:
-        fetch-depth: 0 
+    name: Build & Release (GoReleaser + Snap)
+    needs: [build-python-linux, build-python-windows]
+    runs-on: ubuntu-latest
 
-    - name: Set up Go
-      uses: actions/setup-go@v5
-      with:
-        go-version-file: go.mod
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
-    - name: Install Snapcraft
-      run: sudo snap install snapcraft --classic
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
 
-    - name: Download Linux Python Execs
-      uses: actions/download-artifact@v4
-      with:
-        name: linux-py-execs
-        path: dist_py/linux_amd64/
+      - name: Install Snapcraft
+        run: sudo snap install snapcraft --classic
 
-    - name: Download Windows Python Execs
-      uses: actions/download-artifact@v4
-      with:
-        name: windows-py-execs
-        path: dist_py/windows_amd64/
+      - name: Download Linux Python Execs
+        uses: actions/download-artifact@v4
+        with:
+          name: linux-py-execs
+          path: dist_py/linux_amd64/
 
-    - name: Make Python Execs Executable
-      run: chmod +x dist_py/linux_amd64/*
+      - name: Download Windows Python Execs
+        uses: actions/download-artifact@v4
+        with:
+          name: windows-py-execs
+          path: dist_py/windows_amd64/
 
-    - name: Run GoReleaser
-      uses: goreleaser/goreleaser-action@v5
-      with:
-        version: latest
-        args: release --clean
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Make Python Execs Executable
+        run: chmod +x dist_py/linux_amd64/*
 
-    - name: Publish Snap to Store (if credentials added)
-      env:
-        SNAPCRAFT_STORE_CREDENTIALS: ${{ secrets.SNAPCRAFT_STORE_CREDENTIALS }}
-        SNAP_SECRET_IS_SET: ${{ secrets.SNAPCRAFT_STORE_CREDENTIALS != '' }}
-      if: success() && env.SNAP_SECRET_IS_SET == 'true'
-      run: |
-        echo "Pushing Snap to store..."
-        SNAP_FILE=$(find dist/ -name "*.snap" | head -n 1)
-        if [ -f "$SNAP_FILE" ]; then
-          snapcraft push "$SNAP_FILE" --release=stable
-        else
-          echo "Snap file not found in dist/, skipping push."
-          exit 1
-        fi
+      - name: Run GoReleaser
+        uses: goreleaser/goreleaser-action@v5
+        with:
+          version: latest
+          args: release --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-
+      - name: Publish Snap to Store (if credentials added)
+        if: success() && secrets.SNAPCRAFT_STORE_CREDENTIALS != ''
+        env:
+          SNAPCRAFT_STORE_CREDENTIALS: ${{ secrets.SNAPCRAFT_STORE_CREDENTIALS }}
+        run: |
+          echo "Pushing Snap to store..."
+          SNAP_FILE=$(find dist/ -name "*.snap" | head -n 1)
+          if [ -f "$SNAP_FILE" ]; then
+            snapcraft push "$SNAP_FILE" --release=stable
+          else
+            echo "Snap file not found in dist/, skipping push."
+            exit 1
+          fi
