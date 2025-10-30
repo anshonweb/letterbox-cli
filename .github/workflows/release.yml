@@ -3,12 +3,12 @@ name: Release LetterCLI
 on:
   push:
     tags:
-      - 'v*' # Triggers on tags like v1.0, v1.0.0-rc1
+      - 'v*'
 
 permissions:
-  contents: write # Needed to create/update the GitHub Release
-  packages: write # Needed if publishing to GitHub Packages
-  id-token: write # Needed for OIDC (if used)
+  contents: write
+  packages: write
+  id-token: write
 
 jobs:
   build-python-linux:
@@ -17,17 +17,14 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.10' # Or your preferred version
-
+          python-version: '3.10'
       - name: Install Python dependencies
         run: |
           pip install pyinstaller
           pip install -r python/scripts/requirements.txt
-
       - name: Build Linux Executables
         run: |
           cd python/scripts
@@ -38,10 +35,9 @@ jobs:
           pyinstaller --onefile --clean search_lists.py
           pyinstaller --onefile --clean search_movie.py
           pyinstaller --onefile --clean user_details.py
-          cd ../.. # Back to root
+          cd ../..
           mkdir -p dist_py/linux_amd64
           cp python/scripts/dist/* dist_py/linux_amd64/
-
       - name: Upload Linux Executables
         uses: actions/upload-artifact@v4
         with:
@@ -54,17 +50,14 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.10'
-
       - name: Install Python dependencies
         run: |
           pip install pyinstaller
           pip install -r python/scripts/requirements.txt
-
       - name: Build Windows Executables
         run: |
           cd python/scripts
@@ -75,10 +68,9 @@ jobs:
           pyinstaller --onefile --clean search_lists.py
           pyinstaller --onefile --clean search_movie.py
           pyinstaller --onefile --clean user_details.py
-          cd ..\.. # Back to root
+          cd ..\..
           mkdir -p dist_py\windows_amd64
           copy python\scripts\dist\*.exe dist_py\windows_amd64\
-
       - name: Upload Windows Executables
         uses: actions/upload-artifact@v4
         with:
@@ -94,27 +86,13 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0 # Needed for changelog generation
+          fetch-depth: 0
 
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
 
-      # --- Use the official action to set up Snapcraft/LXD ---
-      - name: Set up Snapcraft
-        uses: snapcore/action-setup-snapcraft@v1
-        with:
-          snapcraft-channel: stable
-
-      - name: Set up LXD (for Snap build)
-        run: |
-          sudo snap install lxd
-          sudo lxd init --auto
-          # Add runner user to lxd group (might be needed)
-          sudo usermod -a -G lxd $USER 
-          # Note: A full logout/login isn't possible, but this + action-setup-snapcraft often works.
-          # If permissions are still an issue, the action might need to run as root or handle group changes.
 
       - name: Download Linux Python Execs
         uses: actions/download-artifact@v4
@@ -131,7 +109,7 @@ jobs:
       - name: Make Python Execs Executable
         run: chmod +x dist_py/linux_amd64/*
 
-      - name: Run GoReleaser
+      - name: Run GoReleaser (Builds Binaries & Archives)
         uses: goreleaser/goreleaser-action@v5
         with:
           version: latest 
@@ -139,26 +117,36 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       
-      - name: Build Snap Package
+      - name: Stage Snap Files
         run: |
-          echo "GoReleaser finished. Manually building Snap package..."
+          echo "Staging files for Snap build..."
           chmod +x ./scripts/build_snap.sh
-          # Run the script. It will now run inside the LXD env set up by action-setup-snapcraft
-          ./scripts/build_snap.sh 
+          ./scripts/build_snap.sh
+
+      - name: Build Snap Package
+        uses: snapcore/action-build@v1
+        id: snapcraft 
+        with:
+
+          path: dist/snap_build
+
           
-      - name: Publish Snap to Store (if credentials added)
+      - name: Upload Snap to Release
+        uses: actions/upload-release-asset@v1
+        if: success()
         env:
-          SNAPCRAFT_STORE_CREDENTIALS: ${{ secrets.SNAPCRAFT_STORE_CREDENTIALS }}
-          SNAP_SECRET_IS_SET: ${{ secrets.SNAPCRAFT_STORE_CREDENTIALS != '' }}
-        if: success() && env.SNAP_SECRET_IS_SET == 'true'
-        run: |
-          echo "Pushing Snap to store..."
-          # Find the built .snap file in the dist directory
-          SNAP_FILE=$(find dist/ -name "*.snap" | head -n 1)
-          if [ -f "$SNAP_FILE" ]; then
-            snapcraft push $SNAP_FILE --release=stable
-          else
-            echo "Snap file not found in dist/, skipping push."
-            exit 1
-          fi
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.goreleaser.outputs.release_upload_url }} 
+          asset_path: ${{ steps.snapcraft.outputs.snap }} 
+          asset_name: ${{ steps.snapcraft.outputs.snap }}
+          asset_content_type: application/vnd.snap
+
+      - name: Publish Snap to Store (if credentials added)
+        uses: snapcore/action-publish@v1
+        if: success() && secrets.SNAPCRAFT_STORE_CREDENTIALS != ''
+        with:
+          store_credentials: ${{ secrets.SNAPCRAFT_STORE_CREDENTIALS }}
+          snap: ${{ steps.snapcraft.outputs.snap }}
+          release: stable
 
