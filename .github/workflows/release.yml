@@ -82,7 +82,7 @@ jobs:
     needs: [build-python-linux, build-python-windows]
     runs-on: ubuntu-latest
     
-
+    outputs: 
       release_upload_url: ${{ steps.goreleaser.outputs.release_upload_url }}
 
     steps:
@@ -112,7 +112,7 @@ jobs:
         run: chmod +x dist_py/linux_amd64/*
 
       - name: Run GoReleaser (Builds Binaries & Archives)
-        id: goreleaser
+        id: goreleaser 
         uses: goreleaser/goreleaser-action@v5
         with:
           version: latest 
@@ -145,11 +145,11 @@ jobs:
 
       - name: Publish Snap to Store (if credentials added)
         uses: snapcore/action-publish@v1
-
         env:
           SNAP_SECRET_IS_SET: ${{ secrets.SNAPCRAFT_STORE_CREDENTIALS != '' }}
 
         if: success() && env.SNAP_SECRET_IS_SET == 'true'
+
         with:
           store_credentials: ${{ secrets.SNAPCRAFT_STORE_CREDENTIALS }}
           snap: ${{ steps.snapcraft.outputs.snap }}
