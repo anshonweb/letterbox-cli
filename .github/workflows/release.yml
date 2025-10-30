@@ -3,12 +3,12 @@ name: Release LetterCLI
 on:
   push:
     tags:
-      - 'v*'
+      - 'v*' # Triggers on tags like v1.0, v1.0.0-rc1
 
 permissions:
-  contents: write
-  packages: write
-  id-token: write
+  contents: write # Needed to create/update the GitHub Release
+  packages: write # Needed if publishing to GitHub Packages
+  id-token: write # Needed for OIDC (if used)
 
 jobs:
   build-python-linux:
@@ -21,7 +21,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.10'
+          python-version: '3.10' # Or your preferred version
 
       - name: Install Python dependencies
         run: |
@@ -38,7 +38,7 @@ jobs:
           pyinstaller --onefile --clean search_lists.py
           pyinstaller --onefile --clean search_movie.py
           pyinstaller --onefile --clean user_details.py
-          cd ../..
+          cd ../.. # Back to root
           mkdir -p dist_py/linux_amd64
           cp python/scripts/dist/* dist_py/linux_amd64/
 
@@ -75,7 +75,7 @@ jobs:
           pyinstaller --onefile --clean search_lists.py
           pyinstaller --onefile --clean search_movie.py
           pyinstaller --onefile --clean user_details.py
-          cd ..\..
+          cd ..\.. # Back to root
           mkdir -p dist_py\windows_amd64
           copy python\scripts\dist\*.exe dist_py\windows_amd64\
 
@@ -89,20 +89,32 @@ jobs:
     name: Build & Release (GoReleaser + Snap)
     needs: [build-python-linux, build-python-windows]
     runs-on: ubuntu-latest
-
+    
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0
+          fetch-depth: 0 # Needed for changelog generation
 
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
 
-      - name: Install Snapcraft
-        run: sudo snap install snapcraft --classic
+      # --- Use the official action to set up Snapcraft/LXD ---
+      - name: Set up Snapcraft
+        uses: snapcore/action-setup-snapcraft@v1
+        with:
+          snapcraft-channel: stable
+
+      - name: Set up LXD (for Snap build)
+        run: |
+          sudo snap install lxd
+          sudo lxd init --auto
+          # Add runner user to lxd group (might be needed)
+          sudo usermod -a -G lxd $USER 
+          # Note: A full logout/login isn't possible, but this + action-setup-snapcraft often works.
+          # If permissions are still an issue, the action might need to run as root or handle group changes.
 
       - name: Download Linux Python Execs
         uses: actions/download-artifact@v4
@@ -122,26 +134,31 @@ jobs:
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@v5
         with:
-          version: latest
-          args: release --clean
+          version: latest 
+          args: release --clean 
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
+      
       - name: Build Snap Package
         run: |
+          echo "GoReleaser finished. Manually building Snap package..."
           chmod +x ./scripts/build_snap.sh
-          ./scripts/build_snap.sh
-
+          # Run the script. It will now run inside the LXD env set up by action-setup-snapcraft
+          ./scripts/build_snap.sh 
+          
       - name: Publish Snap to Store (if credentials added)
-        if: env.SNAPCRAFT_STORE_CREDENTIALS != ''
         env:
           SNAPCRAFT_STORE_CREDENTIALS: ${{ secrets.SNAPCRAFT_STORE_CREDENTIALS }}
+          SNAP_SECRET_IS_SET: ${{ secrets.SNAPCRAFT_STORE_CREDENTIALS != '' }}
+        if: success() && env.SNAP_SECRET_IS_SET == 'true'
         run: |
           echo "Pushing Snap to store..."
+          # Find the built .snap file in the dist directory
           SNAP_FILE=$(find dist/ -name "*.snap" | head -n 1)
           if [ -f "$SNAP_FILE" ]; then
-            snapcraft push "$SNAP_FILE" --release=stable
+            snapcraft push $SNAP_FILE --release=stable
           else
             echo "Snap file not found in dist/, skipping push."
             exit 1
           fi
+
