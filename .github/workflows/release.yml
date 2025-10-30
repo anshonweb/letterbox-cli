@@ -82,6 +82,9 @@ jobs:
     needs: [build-python-linux, build-python-windows]
     runs-on: ubuntu-latest
     
+
+      release_upload_url: ${{ steps.goreleaser.outputs.release_upload_url }}
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -92,7 +95,6 @@ jobs:
         uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
-
 
       - name: Download Linux Python Execs
         uses: actions/download-artifact@v4
@@ -110,6 +112,7 @@ jobs:
         run: chmod +x dist_py/linux_amd64/*
 
       - name: Run GoReleaser (Builds Binaries & Archives)
+        id: goreleaser
         uses: goreleaser/goreleaser-action@v5
         with:
           version: latest 
@@ -125,11 +128,9 @@ jobs:
 
       - name: Build Snap Package
         uses: snapcore/action-build@v1
-        id: snapcraft 
+        id: snapcraft
         with:
-
           path: dist/snap_build
-
           
       - name: Upload Snap to Release
         uses: actions/upload-release-asset@v1
@@ -137,16 +138,20 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          upload_url: ${{ steps.goreleaser.outputs.release_upload_url }} 
-          asset_path: ${{ steps.snapcraft.outputs.snap }} 
+          upload_url: ${{ steps.goreleaser.outputs.release_upload_url }}
+          asset_path: ${{ steps.snapcraft.outputs.snap }}
           asset_name: ${{ steps.snapcraft.outputs.snap }}
           asset_content_type: application/vnd.snap
 
       - name: Publish Snap to Store (if credentials added)
         uses: snapcore/action-publish@v1
-        if: success() && secrets.SNAPCRAFT_STORE_CREDENTIALS != ''
+
+        env:
+          SNAP_SECRET_IS_SET: ${{ secrets.SNAPCRAFT_STORE_CREDENTIALS != '' }}
+
+        if: success() && env.SNAP_SECRET_IS_SET == 'true'
         with:
           store_credentials: ${{ secrets.SNAPCRAFT_STORE_CREDENTIALS }}
           snap: ${{ steps.snapcraft.outputs.snap }}
-          release: stable
+          release: stable 
 
