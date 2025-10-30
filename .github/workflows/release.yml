@@ -128,10 +128,13 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Publish Snap to Store (if credentials added)
-        if: success() && secrets.SNAPCRAFT_STORE_CREDENTIALS != ''
         env:
           SNAPCRAFT_STORE_CREDENTIALS: ${{ secrets.SNAPCRAFT_STORE_CREDENTIALS }}
         run: |
+          if [ -z "$SNAPCRAFT_STORE_CREDENTIALS" ]; then
+            echo "Snapcraft credentials not provided, skipping upload."
+            exit 0
+          fi
           echo "Pushing Snap to store..."
           SNAP_FILE=$(find dist/ -name "*.snap" | head -n 1)
           if [ -f "$SNAP_FILE" ]; then
@@ -140,3 +143,4 @@ jobs:
             echo "Snap file not found in dist/, skipping push."
             exit 1
           fi
+
