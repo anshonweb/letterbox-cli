@@ -141,9 +141,12 @@ jobs:
           path: dist/snap_build
 
       - name: Publish Snap to Store (only if credentials are present)
-        if: ${{ success() && secrets.SNAPCRAFT_STORE_CREDENTIALS != '' }}
-        uses: snapcore/action-publish@v1
-        with:
-          store_credentials: ${{ secrets.SNAPCRAFT_STORE_CREDENTIALS }}
-          snap: ${{ steps.snapcraft.outputs.snap }}
-          release: stable
+        env:
+          SNAPCRAFT_STORE_CREDENTIALS: ${{ secrets.SNAPCRAFT_STORE_CREDENTIALS }}
+        run: |
+          if [ -n "$SNAPCRAFT_STORE_CREDENTIALS" ]; then
+            echo "Publishing Snap to Store..."
+            snapcraft upload "${{ steps.snapcraft.outputs.snap }}" --release=stable --store-credentials <(echo "$SNAPCRAFT_STORE_CREDENTIALS")
+          else
+            echo "SNAPCRAFT_STORE_CREDENTIALS not set. Skipping publish."
+          fi
